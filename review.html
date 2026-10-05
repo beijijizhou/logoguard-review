@@ -110,6 +110,9 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .dcard .noimg { display:grid; place-items:center; color:#999; }
 .dcard div { padding:6px 8px; overflow-wrap:anywhere; }
 .pill { display:inline-block; padding:1px 7px; border-radius:9px; font-size:12px; }
+.pill.idle { background:var(--green-bg); color:var(--green); }
+.status { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; font-size:14px; }
+.status .muted { margin-left:auto; font-size:13px; }
 .pill.block { background:var(--red-bg); color:var(--red); } .pill.review { background:var(--amber-bg); color:var(--amber); }
 .two { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
 @media (max-width:820px) { .two { grid-template-columns:1fr; } }
@@ -493,7 +496,15 @@ function dashboardHtml(d) {
     <div class="muted">${esc(SOURCE[x.source] || x.source)}</div>${esc((x.labels || "").split("; ").slice(0, 3).map(l => ips[l]?.name || l).join("、"))}</div></div>`;
   const ago = s => { const m = Math.round((Date.now() - new Date(s)) / 60000);
     return m < 2 ? "刚刚" : m < 90 ? m + " 分钟前" : m < 2880 ? Math.round(m / 60) + " 小时前" : Math.round(m / 1440) + " 天前"; };
+  // What the GPU machines are doing right now. The page only reads numbers; it starts no work.
+  const waiting = days.reduce((s, x) => s + Number(x.waiting || 0), 0);
+  const busy = (d.machines || []).filter(m => m.gpu && Date.now() - new Date(m.last_seen) < 180000).length;
+  const state = waiting || busy
+    ? `<span class="pill review">检测进行中</span> ${busy} 台机器在工作，还有 ${num(waiting)} 张在排队`
+    : `<span class="pill idle">空闲</span> 没有待检测的图，检测机器在待命`;
+  const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
   return `<div class="dash">
+    <div class="panel status">${state}<span class="muted">本页数字读取于 ${now}，每分钟自动重读一次（只是重新读数，不会触发检测）</span></div>
     <div><h2>最近一天（${mmdd(t.day)}）</h2><div class="tiles">
       ${tile("", num(t.files), "检查的图", t.waiting ? `还有 ${num(t.waiting)} 张在排队` : "全部检完")}
       ${tile("red", num(t.block), "直接拦截", pct(t.block, t.done) + " · 确定侵权")}
