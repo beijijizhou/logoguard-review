@@ -211,6 +211,8 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .slog .lthumb { width:44px; height:44px; object-fit:contain; background:var(--img); border-radius:6px; display:block; }
 .rules tr.cur td { background:var(--blue-bg); }
 .dash b.warn { color:var(--red); }
+.warntext { color:var(--red); }
+.panel.alert { border-color:var(--red); background:var(--red-bg); }
 .cachebar .g { background:var(--blue); } .cachebar .s { background:var(--green); } .cachebar .e { background:var(--amber); }
 @media (max-width:820px) { .mhead b.nm { font-size:19px; } .hlabels span:nth-child(odd) { visibility:hidden; } }
 
@@ -498,7 +500,8 @@ const api = REMOTE ? {
   sonnetRule(n) { return this.call({ action: "sonnet_rule", min_orders: n }); },
   machines(since) { return this.call({ action: "machines", since }); },
   machine(machine, since, hours) { return this.call({ action: "machine", machine, since, hours }); },
-  machinePause(machine, paused) { return this.call({ action: "machine_pause", machine, paused }); },
+  machinePause(machine, paused, reviewer) { return this.call({ action: "machine_pause", machine, paused, reviewer_label: reviewer }); },
+  requeueErrors(reviewer) { return this.call({ action: "requeue_errors", reviewer_label: reviewer }); },
   command(machine, what, reviewer) { return this.call({ action: "command", machine, do: what, reviewer_label: reviewer }); },
   askClaude(id, reviewer) { return this.call({ action: "ask_claude", job_id: Number(id), reviewer_label: reviewer }); },
   detailOfDesign(id) { return this.call({ action: "detail", design: Number(id) }); },
@@ -874,7 +877,7 @@ const channelOn = m => !!(m.channel && Date.now() - new Date(m.channel.seen_at) 
 function mState(m) {
   const s = m.status || {}, online = m.last_seen && Date.now() - new Date(m.last_seen) < 180000;
   if (!online) return { key: "off", dot: "paused", text: channelOn(m) ? "检测程序没在运行" : "离线" };
-  if (m.paused) return { key: "paused", dot: "paused", text: "已暂停" };
+  if (m.paused) return { key: "paused", dot: "paused", text: m.paused_reason ? "出错，已自动停下" : "已暂停" };
   if (s.loaded && s.per_10min > 0) return { key: "work", dot: "live", text: "正在检测" };
   return { key: "idle", dot: "", text: s.loaded ? "在线，等任务" : "在线，模型未加载" };
 }
@@ -906,7 +909,7 @@ function machineButtons(m) {
   return `<div class="mbtns">
     ${m.paused ? b("", `data-pause="0"`, "恢复派活") : b("quiet", `data-pause="1"`, "暂停这台")}
     ${host ? "" : b("quiet", `data-do="stop"`, "停止并释放显卡", reach) + b("quiet", `data-do="start"`, "启动", reach) + b("quiet", `data-do="status"`, "查询状态", reach)}
-    ${m.paused ? `<span class="muted">已暂停：不再给它派新图，手头的做完就停</span>` : ""}</div>`;
+    ${m.paused ? `<span class="${m.paused_reason ? "warntext" : "muted"}">${m.paused_reason ? esc(m.paused_reason) : "已暂停：不再给它派新图，手头的做完就停"}</span>` : ""}</div>`;
 }
 const hwLine = hw => !hw ? "" : [hw.cpu ? `${hw.cpu}${hw.cores ? `（${hw.cores} 核 ${hw.threads || ""} 线程）` : ""}` : "",
   hw.ram_gb ? `内存 ${hw.ram_gb} GB` : "", hw.gpu ? `${hw.gpu}${hw.vram_mb ? ` ${gb(hw.vram_mb)} GB` : ""}` : "",
@@ -934,7 +937,7 @@ function fleetHtml() {
     const held = Number(f.holding || 0), stuck = held && f.held_since && Date.now() - new Date(f.held_since) > 15 * 60000;
     return `<tr data-machine="${esc(m.machine)}" title="点开看 ${esc(m.machine)} 的参数、任务和产出">
       <td class="name"><span class="dot ${st.dot}"></span><b>${esc(m.machine)}</b><small>${esc((m.hw || {}).gpu || m.gpu || "")}</small></td>
-      <td class="${off ? "off" : ""}">${st.text}${off && m.last_seen ? `<small class="muted"> · ${ago(m.last_seen)}</small>` : ""}</td>
+      <td class="${off ? "off" : ""}">${m.paused && m.paused_reason ? `<b class="warn" title="${esc(m.paused_reason)}">${st.text}</b>` : st.text}${off && m.last_seen ? `<small class="muted"> · ${ago(m.last_seen)}</small>` : ""}</td>
       <td>${off || l.gpu == null ? dash0(null) : Math.round(l.gpu) + "%" + meter(l.gpu)}</td>
       <td>${off || l.vram == null ? dash0(null) : `${gb(l.vram)}${l.vramTotal ? " / " + Math.round(l.vramTotal / 1024) : ""} GB`}</td>
       <td class="${!off && l.temp >= 85 ? "warn" : ""}">${off || l.temp == null ? dash0(null) : Math.round(l.temp) + "°C"}</td>
@@ -948,8 +951,21 @@ function fleetHtml() {
   };
   const order = { work: 0, idle: 1, paused: 2, off: 3 };
   const sorted = [...ms].sort((a, b) => order[mState(a).key] - order[mState(b).key] || a.machine.localeCompare(b.machine));
+  // what the queue's error guard did: machines it stopped, and the errors still lying there
+  const stopped = ms.filter(m => m.paused && m.paused_reason), errs = Number(machinesMeta.errorsOpen || 0);
+  const EVENT = { auto_paused: "连续出错，自动停下", requeued: "出错的图放回队列", resumed: "恢复派活", paused: "手动暂停" };
+  const evRow = e => `<tr><td>${new Date(e.at).toLocaleString("zh-CN", { hour12: false, month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+    <td>${esc(e.machine || "全部")}</td><td>${EVENT[e.event] || esc(e.event)}</td><td>${e.jobs != null ? num(e.jobs) + " 张放回队列" : ""}</td>
+    <td style="white-space:normal;text-align:left">${esc(e.detail || "")}</td><td>${esc(e.by || (e.event === "auto_paused" ? "系统自动" : ""))}</td></tr>`;
+  const guard = !stopped.length && !errs ? "" : `<div class="panel alert"><h2>需要你看一下</h2>
+      ${stopped.map(m => `<div class="mrow"><span class="k"><b>${esc(m.machine)}</b></span><span>${esc(m.paused_reason)} <span class="muted">· ${ago(m.paused_at)}</span>
+        <button class="linkish" data-pause="0" data-m="${esc(m.machine)}">修好了，恢复派活</button></span></div>`).join("")}
+      ${errs ? `<div class="mrow"><span class="k">出错的图</span><span>最近 24 小时还有 <b>${num(errs)}</b> 张停在“出错”，没有被检测。<button class="linkish" id="requeueErrors">放回队列，让机器重做</button>
+        <span class="muted">原因解决之后再点；同一张再出错会留在这里</span></span></div>` : ""}</div>`;
+  const events = (machinesMeta.events || []).length ? `<div class="panel"><h2>系统自己做过的动作 <span class="muted" style="font-weight:400">一台机器连续 ${num(10)} 张出错会自动停下，它没做成的图交给别的机器</span></h2>
+      <table><tr><th>时间</th><th>机器</th><th>动作</th><th>图</th><th>原因</th><th>谁</th></tr>${machinesMeta.events.map(evRow).join("")}</table></div>` : "";
   const on = machinesMeta.channelOnline ?? ms.filter(channelOn).length, now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
-  return `<div class="dash">
+  return `<div class="dash">${guard}
     <div class="tiles">
       ${tile("green", `${working.length}<span style="font-size:15px"> / ${ms.length} 台</span>`, "正在检测", `在线 ${online.length} 台 · 离线 ${ms.length - online.length} 台`)}
       ${tile("blue", num(per10 * 6), "现在的合计速度（张 / 小时）", `最近 10 分钟 ${num(per10)} 张`)}
@@ -966,7 +982,7 @@ function fleetHtml() {
         <tbody>${sorted.map(row).join("")}</tbody></table>
       <div class="mbtns"><span class="muted">通道连着 <b>${on}</b> 台</span>
         ${on ? `<button class="quiet" id="updateAll">全部更新到最新版</button>` : `<span class="muted">· 通道装上之后才能从这里停止、启动和更新机器</span>`}</div>
-    </div></div>`;
+    </div>${events}</div>`;
 }
 
 // One value over time. x follows the clock, so a machine that was off shows as a gap, not a jump.
@@ -1096,7 +1112,7 @@ function wireMachines() {
   box.querySelectorAll("#mRecent .dcard[data-job]").forEach(c => c.onclick = () => showDetail(c.dataset.job));
   box.querySelectorAll("button[data-pause]").forEach(b => b.onclick = async () => {
     b.disabled = true;
-    try { await api.machinePause(b.dataset.m, b.dataset.pause === "1"); toast(b.dataset.pause === "1" ? `${b.dataset.m} 已暂停` : `${b.dataset.m} 已恢复`); }
+    try { await api.machinePause(b.dataset.m, b.dataset.pause === "1", who()); toast(b.dataset.pause === "1" ? `${b.dataset.m} 已暂停` : `${b.dataset.m} 已恢复`); }
     catch (e) { toast(e.message); }
     again();
   });
@@ -1108,6 +1124,13 @@ function wireMachines() {
     catch (e) { toast(e.message); }
     setTimeout(again, 4000);
   });
+  const rq = $("#requeueErrors");
+  if (rq) rq.onclick = async () => {
+    if (!confirm("把最近 24 小时出错的图放回队列？原因（NAS、坏掉的机器）解决之后再点；没解决的话它们会再出错一次，然后留在“出错”里。")) return;
+    rq.disabled = true;
+    try { const r = await api.requeueErrors(who()); toast(`已把 ${r.requeued} 张放回队列`); } catch (e) { toast(e.message); }
+    again();
+  };
   const all = $("#updateAll");
   if (all) all.onclick = async () => {
     if (!confirm("把通道连得上的所有机器更新到最新发布的版本？每台会先停下检测，装好后原来在跑的会自己接着跑。")) return;
@@ -1129,7 +1152,7 @@ async function refreshMachinesPage() {
   const asked = mView;
   try {
     if (asked) { const d = await api.machine(asked, midnight(), mHours); pinThumbs(d.recent); mData = d; }
-    else { const r = await api.machines(midnight()); machinesData = r.machines; machinesMeta = { latest: r.latest, hosts: r.hosts || [], channelOnline: r.channel_online }; }
+    else { const r = await api.machines(midnight()); machinesData = r.machines; machinesMeta = { latest: r.latest, hosts: r.hosts || [], channelOnline: r.channel_online, events: r.events || [], errorsOpen: r.errors_open }; }
     mFailed = 0;
   } catch (e) {
     mFailed++;
