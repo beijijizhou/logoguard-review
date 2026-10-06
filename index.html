@@ -1111,10 +1111,18 @@ const LAYER = { ocr: "文字识别", owl: "图案检测", gallery: "图库比对
 const ISIP = { yes: "是 IP", no: "不是 IP", unsure: "拿不准" };
 let recs = [], recFilter = "easy", recBusy = false, recExtended = false;  // extended: "再看 48 张" was used
 // "easy" = waiting for a person, easiest to judge first (review priority, then most orders)
-// "sonnet" = every image Sonnet looked at, by what it said (sonnetLevel)
-let sonnetLevel = "ip", sonnetCounts = null, sonnetNext = 0, sonnetMore = false;  // next row to ask for
-const SONNET = { ip: "Sonnet 说是 IP", unsure: "Sonnet 拿不准", not_ip: "Sonnet 说不是 IP" };
-const paged = () => recFilter === "easy" || recFilter === "sonnet";  // lists read by position, not by time
+// "sonnet" / "local" / "human" = the images one of them looked at, by what it made of them
+const SEEN = {
+  sonnet: { name: "Sonnet 看过的", levels: { ip: "说是 IP", unsure: "拿不准", not_ip: "说不是 IP" },
+    note: "卡片上的「拦截 / 待确认 / 放行」是机器最后的结论，下面一行是 Sonnet 的话" },
+  local: { name: "本地模型看过的", levels: { listed: "认出名单内的 IP", unlisted: "认出名单外的名字", ignored: "认出了东西，规则没采用", nothing: "什么都没认出" },
+    note: "本地模型每张图都看；「规则没采用」是把握不够、类别不送审或属于忽略词" },
+  human: { name: "人检查过的", levels: { infringing: "判为侵权", false_positive: "判为放行", unsure: "拿不准" },
+    note: "按标注时间，最新的在前；标注对这个设计的所有订单生效" },
+};
+const seenLevel = { sonnet: "ip", local: "listed", human: "infringing" };
+let seenCounts = null, seenNext = 0, seenMore = false;  // of the list on screen; next row to ask for
+const paged = () => recFilter === "easy" || recFilter in SEEN;  // lists read by position, not by time
 
 // Claude's opinion in one line, for a card: who it says owns it, or that it sees no IP.
 function claudeLine(c) {
@@ -1146,7 +1154,7 @@ function pinThumbs(list) {
   }
   return list;
 }
-const recsKey = () => recFilter + sonnetLevel + JSON.stringify(sonnetCounts) + "|" + recs.map(r => r.id + (r.human || "") + r.verdict + (r.claude ? "c" : "")).join(",");
+const recsKey = () => recFilter + (seenLevel[recFilter] || "") + JSON.stringify(seenCounts) + "|" + recs.map(r => r.id + (r.human || "") + r.verdict + (r.claude ? "c" : "")).join(",");
 const hhmm = s => new Date(s).toLocaleTimeString("zh-CN", { hour12: false });
 const nameOf = l => ips[l]?.name || l;
 
@@ -1172,32 +1180,35 @@ function recCard(x) {
     <div class="cap"><div class="what ${names ? "" : "none"}">${esc(names) || (x.verdict === "pass" ? "没有发现问题" : "")}</div>
       ${claudeLine(x.claude)}
       <div class="when">${x.easy ? `${x.orders > 1 ? `<b>${num(x.orders)} 单</b> · ` : ""}${esc(PRIO[x.priority] || "")}` : hhmm(x.finished_at) + (x.same > 1 ? ` · <b>同图 ${num(x.same)} 张</b>` : "")}</div></div>
-    ${(x.verdict === "review" || x.easy || x.sonnet) && !x.human ? `<div class="quick"><button class="yes" data-d="infringing">侵权</button><button class="no" data-d="false_positive">放行</button></div>` : ""}</div>`;
+    ${(x.verdict === "review" || x.easy || x.seen) && !x.human ? `<div class="quick"><button class="yes" data-d="infringing">侵权</button><button class="no" data-d="false_positive">放行</button></div>` : ""}</div>`;
 }
 
 function recordsHtml() {
   const chip = (v, label) => `<button data-v="${v}" class="${recFilter === v ? "on" : ""}">${label}</button>`;
-  return `<div class="chips">${chip("easy", "最容易判断的")}${chip("", "全部")}${chip("block", "拦截")}${chip("review", "待确认")}${chip("pass", "放行")}${chip("sonnet", "Sonnet 看过的")}
-      ${recFilter === "sonnet" ? `<span class="levels">${Object.keys(SONNET).map(l => `<button data-l="${l}" class="${sonnetLevel === l ? "on" : ""}">${SONNET[l]}${sonnetCounts ? ` <b>${num(sonnetCounts[l])}</b>` : ""}</button>`).join("")}
-        <span class="muted">最新的在前 · 卡片上的"拦截 / 待确认 / 放行"是机器最后的结论，下面一行是 Sonnet 的话</span></span>` : ""}
+  return `<div class="chips">${chip("easy", "最容易判断的")}${chip("", "全部")}${chip("block", "拦截")}${chip("review", "待确认")}${chip("pass", "放行")}${Object.keys(SEEN).map(k => chip(k, SEEN[k].name)).join("")}
+      ${recFilter in SEEN ? `<span class="levels">${Object.keys(SEEN[recFilter].levels).map(l => `<button data-l="${l}" class="${seenLevel[recFilter] === l ? "on" : ""}">${SEEN[recFilter].levels[l]}${seenCounts ? ` <b>${num(seenCounts[l])}</b>` : ""}</button>`).join("")}
+        <span class="muted">最新的在前 · ${SEEN[recFilter].note}</span></span>` : ""}
       ${recFilter === "easy" ? `<span class="muted" style="align-self:center">等人确认的设计，最明显的排前面（机器已拦截 → Sonnet 确认是 IP → …），每个设计只出现一次</span>` : ""}</div>
     <div class="feed" id="recFeed">${recsShown().map(recCard).join("") || `<span class="muted">${recFilter === "easy" ? "没有等人确认的设计了" : "暂无"}</span>`}</div>
-    ${(recFilter === "sonnet" ? sonnetMore : recs.length && recs.length % 48 === 0) ? `<button class="more" id="recMore">再看 48 张</button>` : ""}`;
+    ${(recFilter in SEEN ? seenMore : recs.length && recs.length % 48 === 0) ? `<button class="more" id="recMore">再看 48 张</button>` : ""}`;
 }
 
 async function loadRecords(more) {
-  if (recBusy) return;
+  if (recBusy) return;  // the list chosen meanwhile is read when this answer is in (see below)
   recBusy = true;
+  const asked = recFilter + "|" + (seenLevel[recFilter] || "");
   try {
     const before = more && recs.length && !paged() ? recs[recs.length - 1].finished_at : "";
-    const at = !more ? 0 : recFilter === "sonnet" ? sonnetNext : recFilter === "easy" ? recs.length : 0;
-    const res = await api.jobs(recFilter, before, at, sonnetLevel);
-    if (res.counts) { sonnetCounts = res.counts; sonnetNext = at + 48; sonnetMore = !!res.more; }
+    const at = !more ? 0 : recFilter in SEEN ? seenNext : recFilter === "easy" ? recs.length : 0;
+    const res = await api.jobs(recFilter, before, at, seenLevel[recFilter]);
+    seenCounts = res.counts || null;
+    if (res.counts) { seenNext = at + 48; seenMore = !!res.more; }
     const got = pinThumbs(res.items);
     recs = more ? recs.concat(got) : got;
     recExtended = !!more;
   } catch (e) { toast(e.message); }
   recBusy = false;
+  if (asked !== recFilter + "|" + (seenLevel[recFilter] || "")) return loadRecords(false);  // another list was chosen
   recsDrawn = "";
   loadRecords.redraw();
 }
@@ -1209,9 +1220,11 @@ loadRecords.redraw = () => {
   recsDrawn = recsKey();
   box.innerHTML = recordsHtml();
   box.querySelectorAll(".chips button").forEach(b => b.onclick = () => {
-    if (b.dataset.l) sonnetLevel = b.dataset.l; else recFilter = b.dataset.v;
+    if (b.dataset.l) seenLevel[recFilter] = b.dataset.l; else { recFilter = b.dataset.v; seenCounts = null; }
+    box.querySelectorAll(".chips button").forEach(x => x.classList.toggle("on", x.dataset.l ? x.dataset.l === seenLevel[recFilter] : x.dataset.v === recFilter));
     loadRecords(false); });
-  box.querySelectorAll(".dcard").forEach(c => c.onclick = () => showDetail(c.dataset.job));
+  box.querySelectorAll(".dcard").forEach(c => c.onclick = () => Number(c.dataset.job) > 0 ? showDetail(c.dataset.job)
+    : toast("这张是最早几批标注的，那时还没有保存判断过程"));
   box.querySelectorAll(".quick button").forEach(b => b.onclick = e => { e.stopPropagation(); quickDecide(b); });
   const m = $("#recMore"); if (m) m.onclick = () => loadRecords(true);
 };
@@ -1409,7 +1422,7 @@ async function refreshDashboard() {
     const stamp = (data.recent && data.recent[0] ? data.recent[0].id : "") + "";
     if (paged()) {
       // not "newest first": keep the order the reviewer is working down; load it once
-      const mark = stamp + "|" + recFilter + sonnetLevel;
+      const mark = stamp + "|" + recFilter + (seenLevel[recFilter] || "");
       if (!recs.length && lastSeen !== mark) { lastSeen = mark; await loadRecords(false); }
     } else if ((stamp !== lastSeen || !recs.length) && !$("#sheet").classList.contains("show")) {
       const fresh = pinThumbs((await api.jobs(recFilter, "").catch(() => ({ items: [] }))).items);
