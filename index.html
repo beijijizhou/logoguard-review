@@ -882,7 +882,7 @@ function machineButtons(m) {
 }
 const hwLine = hw => !hw ? "" : [hw.cpu ? `${hw.cpu}${hw.cores ? `（${hw.cores} 核 ${hw.threads || ""} 线程）` : ""}` : "",
   hw.ram_gb ? `内存 ${hw.ram_gb} GB` : "", hw.gpu ? `${hw.gpu}${hw.vram_mb ? ` ${gb(hw.vram_mb)} GB` : ""}` : "",
-  hw.driver ? `驱动 ${hw.driver}` : "", hw.os || ""].filter(Boolean).join(" · ");
+  hw.driver ? `驱动 ${hw.driver}` : "", hw.os || "", hw.computer ? `电脑名 ${hw.computer}` : ""].filter(Boolean).join(" · ");
 function stateLine(s, hw) {
   if (!s) return "";
   const p = v => v == null ? null : Math.round(v) + "%";
@@ -920,7 +920,7 @@ function fleetHtml() {
   };
   const order = { work: 0, idle: 1, paused: 2, off: 3 };
   const sorted = [...ms].sort((a, b) => order[mState(a).key] - order[mState(b).key] || a.machine.localeCompare(b.machine));
-  const on = ms.filter(channelOn).length, now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  const on = machinesMeta.channelOnline ?? ms.filter(channelOn).length, now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
   return `<div class="dash">
     <div class="tiles">
       ${tile("green", `${working.length}<span style="font-size:15px"> / ${ms.length} 台</span>`, "正在检测", `在线 ${online.length} 台 · 离线 ${ms.length - online.length} 台`)}
@@ -936,7 +936,7 @@ function fleetHtml() {
       <table class="fleet"><thead><tr><th>机器</th><th>状态</th><th>显卡占用</th><th>显存</th><th>温度</th><th>速度</th><th>最近 10 分钟</th>
         <th>今天检测</th><th>重复沿用</th><th>拦截</th><th>待确认</th><th>出错</th><th>手上</th><th>上次完成</th></tr></thead>
         <tbody>${sorted.map(row).join("")}</tbody></table>
-      <div class="mbtns"><span class="muted">通道连着 <b>${on}</b> / ${ms.length} 台</span>
+      <div class="mbtns"><span class="muted">通道连着 <b>${on}</b> 台</span>
         ${on ? `<button class="quiet" id="updateAll">全部更新到最新版</button>` : `<span class="muted">· 通道装上之后才能从这里停止、启动和更新机器</span>`}</div>
     </div></div>`;
 }
@@ -1101,7 +1101,7 @@ async function refreshMachinesPage() {
   const asked = mView;
   try {
     if (asked) { const d = await api.machine(asked, midnight(), mHours); pinThumbs(d.recent); mData = d; }
-    else { const r = await api.machines(midnight()); machinesData = r.machines; machinesMeta = { latest: r.latest, hosts: r.hosts || [] }; }
+    else { const r = await api.machines(midnight()); machinesData = r.machines; machinesMeta = { latest: r.latest, hosts: r.hosts || [], channelOnline: r.channel_online }; }
     mFailed = 0;
   } catch (e) {
     mFailed++;
