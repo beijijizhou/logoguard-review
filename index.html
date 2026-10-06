@@ -1144,6 +1144,20 @@ const recsKey = () => recFilter + "|" + recs.map(r => r.id + (r.human || "") + r
 const hhmm = s => new Date(s).toLocaleTimeString("zh-CN", { hour12: false });
 const nameOf = l => ips[l]?.name || l;
 
+// In the lists by time a design shows once, however many files of it were checked: the card
+// says how many. ("easy" is one card per design already.)
+function recsShown() {
+  if (recFilter === "easy") return recs;
+  const first = new Map(), out = [];
+  for (const r of recs) {
+    if (r.design && first.has(r.design)) { first.get(r.design).same++; continue; }
+    const card = { ...r, same: 1 };
+    if (r.design) first.set(r.design, card);
+    out.push(card);
+  }
+  return out;
+}
+
 function recCard(x) {
   const names = (x.labels || "").split("; ").filter(Boolean).map(nameOf).join("、");
   return `<div class="dcard ${esc(x.verdict)}" data-job="${x.id}" title="${esc(names)}">
@@ -1151,7 +1165,7 @@ function recCard(x) {
     <span class="badge ${esc(x.verdict)}">${VERDICT[x.verdict] || ""}</span>${x.human ? `<span class="rep">已标注</span>` : x.cached ? `<span class="rep">重复</span>` : ""}
     <div class="cap"><div class="what ${names ? "" : "none"}">${esc(names) || (x.verdict === "pass" ? "没有发现问题" : "")}</div>
       ${claudeLine(x.claude)}
-      <div class="when">${x.easy ? `${x.orders > 1 ? `<b>${num(x.orders)} 单</b> · ` : ""}${esc(PRIO[x.priority] || "")}` : hhmm(x.finished_at)}</div></div>
+      <div class="when">${x.easy ? `${x.orders > 1 ? `<b>${num(x.orders)} 单</b> · ` : ""}${esc(PRIO[x.priority] || "")}` : hhmm(x.finished_at) + (x.same > 1 ? ` · <b>同图 ${num(x.same)} 张</b>` : "")}</div></div>
     ${(x.verdict === "review" || x.easy) && !x.human ? `<div class="quick"><button class="yes" data-d="infringing">侵权</button><button class="no" data-d="false_positive">放行</button></div>` : ""}</div>`;
 }
 
@@ -1159,7 +1173,7 @@ function recordsHtml() {
   const chip = (v, label) => `<button data-v="${v}" class="${recFilter === v ? "on" : ""}">${label}</button>`;
   return `<div class="chips">${chip("easy", "最容易判断的")}${chip("", "全部")}${chip("block", "拦截")}${chip("review", "待确认")}${chip("pass", "放行")}
       ${recFilter === "easy" ? `<span class="muted" style="align-self:center">等人确认的设计，最明显的排前面（机器已拦截 → Sonnet 确认是 IP → …），每个设计只出现一次</span>` : ""}</div>
-    <div class="feed" id="recFeed">${recs.map(recCard).join("") || `<span class="muted">${recFilter === "easy" ? "没有等人确认的设计了" : "暂无"}</span>`}</div>
+    <div class="feed" id="recFeed">${recsShown().map(recCard).join("") || `<span class="muted">${recFilter === "easy" ? "没有等人确认的设计了" : "暂无"}</span>`}</div>
     ${recs.length && recs.length % 48 === 0 ? `<button class="more" id="recMore">再看 48 张</button>` : ""}`;
 }
 
@@ -1265,8 +1279,8 @@ function closeSheet() { $("#sheet").classList.remove("show"); sheetJob = null; l
 
 // The neighbour of the open record in the list on screen (dir: +1 older, -1 newer).
 function sheetStep(dir) {
-  const i = recs.findIndex(r => String(r.id) === String(sheetJob));
-  const next = i < 0 ? null : recs[i + dir];
+  const list = recsShown(), i = list.findIndex(r => String(r.id) === String(sheetJob));
+  const next = i < 0 ? null : list[i + dir];
   if (next) showDetail(next.id); else if (dir > 0) { if (i >= 0) toast("这一页看完了"); closeSheet(); }
 }
 
