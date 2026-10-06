@@ -231,6 +231,14 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .sheet .step { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-top:8px; }
 .sheet .step b.n { display:inline-block; width:22px; height:22px; line-height:22px; text-align:center; border-radius:50%;
                    background:var(--blue-bg); color:var(--blue); font-size:13px; margin-right:6px; }
+.sn { display:block; font-size:12px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sn.ip { color:var(--red); } .sn.no { color:var(--green); } .sn.un { color:var(--amber); }
+.snbox { margin-top:10px; padding:10px 12px; border-radius:10px; background:var(--blue-bg); font-size:14px; }
+.snbox table { border-collapse:collapse; width:100%; margin-top:6px; font-size:13px; }
+.snbox td { padding:3px 6px; border-top:1px solid var(--line); vertical-align:top; }
+.askrow { margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:13px; }
+.askrow button { font:inherit; font-weight:600; padding:7px 14px; border-radius:8px; cursor:pointer; background:var(--blue); color:#fff; border:0; }
+.askrow button:disabled { opacity:.6; cursor:default; }
 .sheet .askbtn { font:inherit; font-weight:600; margin-top:8px; padding:7px 14px; border-radius:8px; cursor:pointer;
                  background:var(--blue); color:#fff; border:0; }
 .sheet .askbtn:disabled { opacity:.6; cursor:default; }
@@ -349,7 +357,7 @@ function fromLocal(it) {
 }
 function fromRemote(it) {
   return { key: it.image_id, imgId: String(it.image_id).slice(0, 8), thumb: it.thumb_url, full: it.thumb_url,
-           priority: it.priority || 0,
+           priority: it.priority || 0, claude: it.claude || null,
            verdict: it.ai_verdict, orders: it.orders,
            suspects: (it.suspects || []).map(s => ({ name: s.name, listed: s.listed, tag: s.tag, ipId: s.ip_id, why: s.why,
              info: [s.kind, s.owner && s.owner !== s.name ? "属于 " + s.owner : ""].filter(Boolean).join(" · ") })),
@@ -391,7 +399,8 @@ const api = REMOTE ? {
   scan(day, reviewer) { return this.call({ action: "scan", day, reviewer_label: reviewer }); },
   pause(paused, reviewer) { return this.call({ action: "pause", paused, reviewer_label: reviewer }); },
   fleet(go, reviewer) { return this.call({ action: "fleet", go, reviewer_label: reviewer }); },
-  jobs(verdict, before) { return this.call({ action: "jobs", verdict, before, limit: 48 }); },
+  jobs(verdict, before, offset) { return this.call({ action: "jobs", verdict, before, offset, limit: 48 }); },
+  askClaudeImage(imageId, reviewer) { return this.call({ action: "ask_claude", image_id: imageId, reviewer_label: reviewer }); },
   detail(id) { return this.call({ action: "detail", id: Number(id) }); },
   askClaude(id, reviewer) { return this.call({ action: "ask_claude", job_id: Number(id), reviewer_label: reviewer }); },
   detailOfDesign(id) { return this.call({ action: "detail", design: Number(id) }); },
@@ -465,6 +474,9 @@ function render() {
         <span class="verdict ${verdict[0]}">${verdict[1]}</span>${it.priority ? `<span class="prio p${it.priority}">优先级 ${it.priority} · ${PRIO[it.priority]}</span>` : ""}
         <h2>${mode === "pass" ? "AI 的判断" : "AI 怀疑这张图用了："}</h2>
         ${susHtml}
+        ${it.claude ? claudeBlock(it.claude) : ""}
+        ${REMOTE ? `<div class="askrow"><button id="askSonnet">${it.claude ? "再让 Sonnet 看一次" : "让 Sonnet 看一下"}</button>
+          <span class="muted">约 $0.005 一次，计入每天 $10 的额度。它的回答只供参考。</span></div>` : ""}
       </div>
       <div class="box">
         <p class="question">${question}</p>
@@ -484,6 +496,16 @@ function render() {
       </div></details>
     </div>`;
   main.querySelectorAll(".prios button").forEach(b => { b.onclick = () => { prioFilter = Number(b.dataset.p); load(); }; });
+  const ask = $("#askSonnet");
+  if (ask) ask.onclick = async () => {
+    ask.disabled = true; ask.textContent = "Sonnet 正在看…（几秒钟）";
+    try {
+      const r = await api.askClaudeImage(it.key, $("#reviewer").value.trim() || null);
+      it.claude = r.answer;
+      toast(`Sonnet 已回答 · 这次 $${Number(r.usd).toFixed(4)} · 今天共 $${Number(r.spent).toFixed(2)} / $${r.limit}`);
+      render();
+    } catch (e) { alert("没有问成：" + e.message); ask.disabled = false; ask.textContent = "让 Sonnet 看一下"; }
+  };
   $("#img").onclick = () => it.full && window.open(it.full, "_blank");
   $("#img").onerror = () => refreshLinks(it.key);
   $("#cpid").onclick = () => copy(it.imgId, "图片编号");
@@ -744,7 +766,25 @@ function dashboardHtml(d) {
 const VERDICT = { block: "拦截", review: "待确认", pass: "放行" };
 const LAYER = { ocr: "文字识别", owl: "图案检测", gallery: "图库比对", vlm: "本地小模型", claude: "Claude 复核" };
 const ISIP = { yes: "是 IP", no: "不是 IP", unsure: "拿不准" };
-let recs = [], recFilter = "", recBusy = false, recExtended = false;  // extended: "再看 48 张" was used
+let recs = [], recFilter = "easy", recBusy = false, recExtended = false;  // extended: "再看 48 张" was used
+// "easy" = waiting for a person, easiest to judge first (review priority, then most orders)
+
+// Claude's opinion in one line, for a card: who it says owns it, or that it sees no IP.
+function claudeLine(c) {
+  if (!c) return "";
+  const owners = [...(c.candidates || []).filter(x => x.is_ip === "yes").map(x => x.owner || x.name),
+                  ...(c.other_ip || []).map(o => o.owner || o.name)].filter(Boolean);
+  const first = owners[0] ? "：" + owners[0] : "";
+  return c.verdict === "ip" ? `<span class="sn ip">Sonnet：是 IP${esc(first)}</span>`
+    : c.verdict === "not_ip" ? `<span class="sn no">Sonnet：不是 IP</span>` : `<span class="sn un">Sonnet：拿不准</span>`;
+}
+// The same opinion in full, for the review tab and wherever there is room.
+function claudeBlock(c) {
+  const head = { ip: "有 IP", not_ip: "没有 IP", unsure: "拿不准" }[c.verdict] || c.verdict;
+  return `<div class="snbox"><b>Sonnet 的看法：${esc(head)}</b>
+    ${(c.candidates || []).length ? `<table>${c.candidates.map(x => `<tr><td>${esc(x.name)}</td><td>${ISIP[x.is_ip] || esc(x.is_ip)}</td><td>${esc(x.owner || "")}</td><td>${esc(x.reason || "")}</td></tr>`).join("")}</table>` : ""}
+    ${(c.other_ip || []).length ? `<div>另外认出：${c.other_ip.map(o => esc(o.name) + (o.owner ? `（${esc(o.owner)}）` : "")).join("、")}</div>` : ""}</div>`;
+}
 let recsDrawn = "";  // what the list on screen was drawn from; redrawn only when this changes
 
 // The server signs a fresh link for a thumbnail on every answer. Keep the first one per picture
@@ -759,7 +799,7 @@ function pinThumbs(list) {
   }
   return list;
 }
-const recsKey = () => recFilter + "|" + recs.map(r => r.id + (r.human || "") + r.verdict).join(",");
+const recsKey = () => recFilter + "|" + recs.map(r => r.id + (r.human || "") + r.verdict + (r.claude ? "c" : "")).join(",");
 const hhmm = s => new Date(s).toLocaleTimeString("zh-CN", { hour12: false });
 const nameOf = l => ips[l]?.name || l;
 
@@ -769,14 +809,16 @@ function recCard(x) {
     ${x.thumb_url ? `<img src="${esc(x.thumb_url)}" loading="lazy" alt="">` : `<div class="noimg">无缩略图</div>`}
     <span class="badge ${esc(x.verdict)}">${VERDICT[x.verdict] || ""}</span>${x.human ? `<span class="rep">已标注</span>` : x.cached ? `<span class="rep">重复</span>` : ""}
     <div class="cap"><div class="what ${names ? "" : "none"}">${esc(names) || (x.verdict === "pass" ? "没有发现问题" : "")}</div>
-      <div class="when">${hhmm(x.finished_at)}</div></div>
-    ${x.verdict === "review" && !x.human ? `<div class="quick"><button class="yes" data-d="infringing">侵权</button><button class="no" data-d="false_positive">放行</button></div>` : ""}</div>`;
+      ${claudeLine(x.claude)}
+      <div class="when">${x.easy ? `${x.orders > 1 ? `<b>${num(x.orders)} 单</b> · ` : ""}${esc(PRIO[x.priority] || "")}` : hhmm(x.finished_at)}</div></div>
+    ${(x.verdict === "review" || x.easy) && !x.human ? `<div class="quick"><button class="yes" data-d="infringing">侵权</button><button class="no" data-d="false_positive">放行</button></div>` : ""}</div>`;
 }
 
 function recordsHtml() {
   const chip = (v, label) => `<button data-v="${v}" class="${recFilter === v ? "on" : ""}">${label}</button>`;
-  return `<div class="chips">${chip("", "全部")}${chip("block", "拦截")}${chip("review", "待确认")}${chip("pass", "放行")}</div>
-    <div class="feed" id="recFeed">${recs.map(recCard).join("") || `<span class="muted">暂无</span>`}</div>
+  return `<div class="chips">${chip("easy", "最容易判断的")}${chip("", "全部")}${chip("block", "拦截")}${chip("review", "待确认")}${chip("pass", "放行")}
+      ${recFilter === "easy" ? `<span class="muted" style="align-self:center">等人确认的设计，最明显的排前面（机器已拦截 → Sonnet 确认是 IP → …），每个设计只出现一次</span>` : ""}</div>
+    <div class="feed" id="recFeed">${recs.map(recCard).join("") || `<span class="muted">${recFilter === "easy" ? "没有等人确认的设计了" : "暂无"}</span>`}</div>
     ${recs.length && recs.length % 48 === 0 ? `<button class="more" id="recMore">再看 48 张</button>` : ""}`;
 }
 
@@ -784,8 +826,8 @@ async function loadRecords(more) {
   if (recBusy) return;
   recBusy = true;
   try {
-    const before = more && recs.length ? recs[recs.length - 1].finished_at : "";
-    const got = pinThumbs((await api.jobs(recFilter, before)).items);
+    const before = more && recs.length && recFilter !== "easy" ? recs[recs.length - 1].finished_at : "";
+    const got = pinThumbs((await api.jobs(recFilter, before, more && recFilter === "easy" ? recs.length : 0)).items);
     recs = more ? recs.concat(got) : got;
     recExtended = !!more;
   } catch (e) { toast(e.message); }
@@ -994,7 +1036,10 @@ async function refreshDashboard() {
     if (kept && kept.childElementCount) $("#records").replaceWith(kept);
     // Ask for the list only when the newest finished image changed (the numbers already say which).
     const stamp = (data.recent && data.recent[0] ? data.recent[0].id : "") + "";
-    if ((stamp !== lastSeen || !recs.length) && !$("#sheet").classList.contains("show")) {
+    if (recFilter === "easy") {
+      // not "newest first": keep the order the reviewer is working down; load it once
+      if (!recs.length && lastSeen !== stamp + "|easy") { lastSeen = stamp + "|easy"; await loadRecords(false); }
+    } else if ((stamp !== lastSeen || !recs.length) && !$("#sheet").classList.contains("show")) {
       const fresh = pinThumbs((await api.jobs(recFilter, "").catch(() => ({ items: [] }))).items);
       lastSeen = stamp;
       const have = new Set(recs.map(r => r.id));
