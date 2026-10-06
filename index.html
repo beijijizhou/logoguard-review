@@ -1152,7 +1152,7 @@ const ISIP = { yes: "是 IP", no: "不是 IP", unsure: "拿不准" };
 let recs = [], recTotal = 0, recBusy = false;
 // The record wall is the designs table as cards. Its filters combine; the default is what
 // waits for a person, the most obvious first.
-const RF_DEFAULT = { verdict: "flagged", human: "no", sonnet: "", local: "", sort: "easy" };
+const RF_DEFAULT = { verdict: "flagged", human: "no", sonnet: "", local: "", repeat: "", sort: "easy" };
 const rf = { ...RF_DEFAULT };
 const RF = {
   verdict: ["结论", { flagged: "拦截和待确认", block: "拦截", review: "待确认", pass: "放行" }],
@@ -1160,6 +1160,10 @@ const RF = {
   sonnet: ["Sonnet", { ip: "说是 IP", unsure: "拿不准", not_ip: "说不是 IP", none: "没问过" }],
   local: ["本地模型", { listed: "认出名单内的 IP", unlisted: "认出名单外的名字", ignored: "认出了，规则没采用", nothing: "什么都没认出" }],
 };
+// repeat: how many order files carry the design -> what is asked of the table
+RF.repeat = ["重复", { "2+": "有重复（2 单以上）", "5+": "5 单以上", "10+": "10 单以上", once: "没有重复（只 1 单）" }];
+const rfAsk = () => { const { repeat, ...ask } = rf;
+  return { ...ask, ...(repeat === "once" ? { max: 1 } : repeat ? { min: parseInt(repeat, 10) } : {}) }; };
 const RF_SORT = { easy: "最容易判断的在前", last: "最新的在前", orders: "订单最多的在前", first: "最早出现的在前" };
 const rfKey = () => JSON.stringify(rf);
 
@@ -1225,7 +1229,7 @@ async function loadRecords(more) {
   recBusy = true;
   const asked = rfKey();
   try {
-    const res = await api.designs({ ...rf, limit: 48, offset: more ? recs.length : 0, cards: true });
+    const res = await api.designs({ ...rfAsk(), limit: 48, offset: more ? recs.length : 0, cards: true });
     // a card is the design's newest order file: that is the record the sheet opens
     const got = pinThumbs(res.items.filter(d => d.job).map(d => ({ ...d, id: d.job, design: d.id,
       human: d.source === "human" ? "yes" : "", finished_at: d.last_at })));
