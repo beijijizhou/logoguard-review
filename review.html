@@ -259,6 +259,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .chips button.on { background:var(--fg); color:var(--bg); border-color:var(--fg); }
 .chips .levels { display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex-basis:100%; padding-top:4px; }
 .chips .levels button { border-radius:8px; }
+.chips .sales { flex-basis:100%; font-size:14px; }
 .feed .dcard { cursor:pointer; } .feed .dcard:hover { border-color:var(--blue); }
 .more { display:block; margin:12px auto 0; font:inherit; padding:7px 18px; border-radius:8px; border:1px solid var(--line);
         background:var(--card); color:var(--fg); cursor:pointer; }
@@ -1119,8 +1120,11 @@ const SEEN = {
     note: "本地模型每张图都看；「规则没采用」是把握不够、类别不送审或属于忽略词" },
   human: { name: "人检查过的", levels: { infringing: "判为侵权", false_positive: "判为放行", unsure: "拿不准" },
     note: "按标注时间，最新的在前；标注对这个设计的所有订单生效" },
+  top: { name: "卖得最多的", levels: { 10: "10 单以上", 5: "5–9 单", 2: "2–4 单", 1: "只有 1 单" }, order: ["10", "5", "2", "1"],
+    note: "同一个图案出现在多少个订单文件里，越多越好卖；每个设计一张卡片，数字是设计的个数" },
 };
-const seenLevel = { sonnet: "ip", local: "listed", human: "infringing" };
+const seenLevel = { sonnet: "ip", local: "listed", human: "infringing", top: "10" };
+let seenTotals = null;  // of "top": {designs, images}
 let seenCounts = null, seenNext = 0, seenMore = false;  // of the list on screen; next row to ask for
 const paged = () => recFilter === "easy" || recFilter in SEEN;  // lists read by position, not by time
 
@@ -1179,15 +1183,16 @@ function recCard(x) {
     <span class="badge ${esc(x.verdict)}">${VERDICT[x.verdict] || ""}</span>${x.human ? `<span class="rep">已标注</span>` : x.cached ? `<span class="rep">重复</span>` : ""}
     <div class="cap"><div class="what ${names ? "" : "none"}">${esc(names) || (x.verdict === "pass" ? "没有发现问题" : "")}</div>
       ${claudeLine(x.claude)}
-      <div class="when">${x.easy ? `${x.orders > 1 ? `<b>${num(x.orders)} 单</b> · ` : ""}${esc(PRIO[x.priority] || "")}` : hhmm(x.finished_at) + (x.same > 1 ? ` · <b>同图 ${num(x.same)} 张</b>` : "")}</div></div>
+      <div class="when">${x.easy ? `${x.orders > 1 ? `<b>${num(x.orders)} 单</b> · ` : ""}${esc(PRIO[x.priority] || "")}` : x.top ? `<b>${num(x.orders)} 单</b>` : (x.orders > 1 ? `<b>${num(x.orders)} 单</b> · ` : "") + hhmm(x.finished_at) + (x.same > 1 ? ` · 这一页 ${num(x.same)} 张` : "")}</div></div>
     ${(x.verdict === "review" || x.easy || x.seen) && !x.human ? `<div class="quick"><button class="yes" data-d="infringing">侵权</button><button class="no" data-d="false_positive">放行</button></div>` : ""}</div>`;
 }
 
 function recordsHtml() {
   const chip = (v, label) => `<button data-v="${v}" class="${recFilter === v ? "on" : ""}">${label}</button>`;
   return `<div class="chips">${chip("easy", "最容易判断的")}${chip("", "全部")}${chip("block", "拦截")}${chip("review", "待确认")}${chip("pass", "放行")}${Object.keys(SEEN).map(k => chip(k, SEEN[k].name)).join("")}
-      ${recFilter in SEEN ? `<span class="levels">${Object.keys(SEEN[recFilter].levels).map(l => `<button data-l="${l}" class="${seenLevel[recFilter] === l ? "on" : ""}">${SEEN[recFilter].levels[l]}${seenCounts ? ` <b>${num(seenCounts[l])}</b>` : ""}</button>`).join("")}
-        <span class="muted">最新的在前 · ${SEEN[recFilter].note}</span></span>` : ""}
+      ${recFilter in SEEN ? `<span class="levels">${(SEEN[recFilter].order || Object.keys(SEEN[recFilter].levels)).map(l => `<button data-l="${l}" class="${seenLevel[recFilter] === l ? "on" : ""}">${SEEN[recFilter].levels[l]}${seenCounts ? ` <b>${num(seenCounts[l])}</b>` : ""}</button>`).join("")}
+        <span class="muted">${recFilter === "top" ? "订单最多的在前" : "最新的在前"} · ${SEEN[recFilter].note}</span>
+        ${recFilter === "top" && seenTotals ? `<span class="sales">一共检过 <b>${num(seenTotals.images)}</b> 张图，是 <b>${num(seenTotals.designs)}</b> 个不同的设计：<b>${num(seenTotals.images - seenTotals.designs)}</b> 张（${pct(seenTotals.images - seenTotals.designs, seenTotals.images)}）是重复的</span>` : ""}</span>` : ""}
       ${recFilter === "easy" ? `<span class="muted" style="align-self:center">等人确认的设计，最明显的排前面（机器已拦截 → Sonnet 确认是 IP → …），每个设计只出现一次</span>` : ""}</div>
     <div class="feed" id="recFeed">${recsShown().map(recCard).join("") || `<span class="muted">${recFilter === "easy" ? "没有等人确认的设计了" : "暂无"}</span>`}</div>
     ${(recFilter in SEEN ? seenMore : recs.length && recs.length % 48 === 0) ? `<button class="more" id="recMore">再看 48 张</button>` : ""}`;
@@ -1202,6 +1207,7 @@ async function loadRecords(more) {
     const at = !more ? 0 : recFilter in SEEN ? seenNext : recFilter === "easy" ? recs.length : 0;
     const res = await api.jobs(recFilter, before, at, seenLevel[recFilter]);
     seenCounts = res.counts || null;
+    seenTotals = res.totals || null;
     if (res.counts) { seenNext = at + 48; seenMore = !!res.more; }
     const got = pinThumbs(res.items);
     recs = more ? recs.concat(got) : got;
