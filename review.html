@@ -257,6 +257,8 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .chips button { font:inherit; font-size:13px; padding:4px 12px; border-radius:14px; border:1px solid var(--line);
                 background:var(--card); color:var(--fg); cursor:pointer; }
 .chips button.on { background:var(--fg); color:var(--bg); border-color:var(--fg); }
+.chips .levels { display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex-basis:100%; padding-top:4px; }
+.chips .levels button { border-radius:8px; }
 .feed .dcard { cursor:pointer; } .feed .dcard:hover { border-color:var(--blue); }
 .more { display:block; margin:12px auto 0; font:inherit; padding:7px 18px; border-radius:8px; border:1px solid var(--line);
         background:var(--card); color:var(--fg); cursor:pointer; }
@@ -447,7 +449,7 @@ const api = REMOTE ? {
   scan(day, reviewer) { return this.call({ action: "scan", day, reviewer_label: reviewer }); },
   pause(paused, reviewer) { return this.call({ action: "pause", paused, reviewer_label: reviewer }); },
   fleet(go, reviewer) { return this.call({ action: "fleet", go, reviewer_label: reviewer }); },
-  jobs(verdict, before, offset) { return this.call({ action: "jobs", verdict, before, offset, limit: 48 }); },
+  jobs(verdict, before, offset, level) { return this.call({ action: "jobs", verdict, before, offset, level, limit: 48 }); },
   askClaudeImage(imageId, reviewer) { return this.call({ action: "ask_claude", image_id: imageId, reviewer_label: reviewer }); },
   detail(id) { return this.call({ action: "detail", id: Number(id) }); },
   machines(since) { return this.call({ action: "machines", since }); },
@@ -1109,6 +1111,10 @@ const LAYER = { ocr: "文字识别", owl: "图案检测", gallery: "图库比对
 const ISIP = { yes: "是 IP", no: "不是 IP", unsure: "拿不准" };
 let recs = [], recFilter = "easy", recBusy = false, recExtended = false;  // extended: "再看 48 张" was used
 // "easy" = waiting for a person, easiest to judge first (review priority, then most orders)
+// "sonnet" = every image Sonnet looked at, by what it said (sonnetLevel)
+let sonnetLevel = "ip", sonnetCounts = null, sonnetNext = 0, sonnetMore = false;  // next row to ask for
+const SONNET = { ip: "Sonnet 说是 IP", unsure: "Sonnet 拿不准", not_ip: "Sonnet 说不是 IP" };
+const paged = () => recFilter === "easy" || recFilter === "sonnet";  // lists read by position, not by time
 
 // Claude's opinion in one line, for a card: who it says owns it, or that it sees no IP.
 function claudeLine(c) {
@@ -1140,7 +1146,7 @@ function pinThumbs(list) {
   }
   return list;
 }
-const recsKey = () => recFilter + "|" + recs.map(r => r.id + (r.human || "") + r.verdict + (r.claude ? "c" : "")).join(",");
+const recsKey = () => recFilter + sonnetLevel + JSON.stringify(sonnetCounts) + "|" + recs.map(r => r.id + (r.human || "") + r.verdict + (r.claude ? "c" : "")).join(",");
 const hhmm = s => new Date(s).toLocaleTimeString("zh-CN", { hour12: false });
 const nameOf = l => ips[l]?.name || l;
 
@@ -1166,23 +1172,28 @@ function recCard(x) {
     <div class="cap"><div class="what ${names ? "" : "none"}">${esc(names) || (x.verdict === "pass" ? "没有发现问题" : "")}</div>
       ${claudeLine(x.claude)}
       <div class="when">${x.easy ? `${x.orders > 1 ? `<b>${num(x.orders)} 单</b> · ` : ""}${esc(PRIO[x.priority] || "")}` : hhmm(x.finished_at) + (x.same > 1 ? ` · <b>同图 ${num(x.same)} 张</b>` : "")}</div></div>
-    ${(x.verdict === "review" || x.easy) && !x.human ? `<div class="quick"><button class="yes" data-d="infringing">侵权</button><button class="no" data-d="false_positive">放行</button></div>` : ""}</div>`;
+    ${(x.verdict === "review" || x.easy || x.sonnet) && !x.human ? `<div class="quick"><button class="yes" data-d="infringing">侵权</button><button class="no" data-d="false_positive">放行</button></div>` : ""}</div>`;
 }
 
 function recordsHtml() {
   const chip = (v, label) => `<button data-v="${v}" class="${recFilter === v ? "on" : ""}">${label}</button>`;
-  return `<div class="chips">${chip("easy", "最容易判断的")}${chip("", "全部")}${chip("block", "拦截")}${chip("review", "待确认")}${chip("pass", "放行")}
+  return `<div class="chips">${chip("easy", "最容易判断的")}${chip("", "全部")}${chip("block", "拦截")}${chip("review", "待确认")}${chip("pass", "放行")}${chip("sonnet", "Sonnet 看过的")}
+      ${recFilter === "sonnet" ? `<span class="levels">${Object.keys(SONNET).map(l => `<button data-l="${l}" class="${sonnetLevel === l ? "on" : ""}">${SONNET[l]}${sonnetCounts ? ` <b>${num(sonnetCounts[l])}</b>` : ""}</button>`).join("")}
+        <span class="muted">最新的在前 · 卡片上的"拦截 / 待确认 / 放行"是机器最后的结论，下面一行是 Sonnet 的话</span></span>` : ""}
       ${recFilter === "easy" ? `<span class="muted" style="align-self:center">等人确认的设计，最明显的排前面（机器已拦截 → Sonnet 确认是 IP → …），每个设计只出现一次</span>` : ""}</div>
     <div class="feed" id="recFeed">${recsShown().map(recCard).join("") || `<span class="muted">${recFilter === "easy" ? "没有等人确认的设计了" : "暂无"}</span>`}</div>
-    ${recs.length && recs.length % 48 === 0 ? `<button class="more" id="recMore">再看 48 张</button>` : ""}`;
+    ${(recFilter === "sonnet" ? sonnetMore : recs.length && recs.length % 48 === 0) ? `<button class="more" id="recMore">再看 48 张</button>` : ""}`;
 }
 
 async function loadRecords(more) {
   if (recBusy) return;
   recBusy = true;
   try {
-    const before = more && recs.length && recFilter !== "easy" ? recs[recs.length - 1].finished_at : "";
-    const got = pinThumbs((await api.jobs(recFilter, before, more && recFilter === "easy" ? recs.length : 0)).items);
+    const before = more && recs.length && !paged() ? recs[recs.length - 1].finished_at : "";
+    const at = !more ? 0 : recFilter === "sonnet" ? sonnetNext : recFilter === "easy" ? recs.length : 0;
+    const res = await api.jobs(recFilter, before, at, sonnetLevel);
+    if (res.counts) { sonnetCounts = res.counts; sonnetNext = at + 48; sonnetMore = !!res.more; }
+    const got = pinThumbs(res.items);
     recs = more ? recs.concat(got) : got;
     recExtended = !!more;
   } catch (e) { toast(e.message); }
@@ -1197,7 +1208,9 @@ loadRecords.redraw = () => {
   if (box.childElementCount && recsDrawn === recsKey()) return;  // already shows exactly this
   recsDrawn = recsKey();
   box.innerHTML = recordsHtml();
-  box.querySelectorAll(".chips button").forEach(b => b.onclick = () => { recFilter = b.dataset.v; loadRecords(false); });
+  box.querySelectorAll(".chips button").forEach(b => b.onclick = () => {
+    if (b.dataset.l) sonnetLevel = b.dataset.l; else recFilter = b.dataset.v;
+    loadRecords(false); });
   box.querySelectorAll(".dcard").forEach(c => c.onclick = () => showDetail(c.dataset.job));
   box.querySelectorAll(".quick button").forEach(b => b.onclick = e => { e.stopPropagation(); quickDecide(b); });
   const m = $("#recMore"); if (m) m.onclick = () => loadRecords(true);
@@ -1394,9 +1407,10 @@ async function refreshDashboard() {
     if (kept && kept.childElementCount) $("#records").replaceWith(kept);
     // Ask for the list only when the newest finished image changed (the numbers already say which).
     const stamp = (data.recent && data.recent[0] ? data.recent[0].id : "") + "";
-    if (recFilter === "easy") {
+    if (paged()) {
       // not "newest first": keep the order the reviewer is working down; load it once
-      if (!recs.length && lastSeen !== stamp + "|easy") { lastSeen = stamp + "|easy"; await loadRecords(false); }
+      const mark = stamp + "|" + recFilter + sonnetLevel;
+      if (!recs.length && lastSeen !== mark) { lastSeen = mark; await loadRecords(false); }
     } else if ((stamp !== lastSeen || !recs.length) && !$("#sheet").classList.contains("show")) {
       const fresh = pinThumbs((await api.jobs(recFilter, "").catch(() => ({ items: [] }))).items);
       lastSeen = stamp;
