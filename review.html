@@ -273,6 +273,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .dz td { white-space:nowrap; } .dz td.name, .dz td.wrap { white-space:normal; }
 .dz tr.row { cursor:pointer; } .dz tr.row:hover td { background:var(--bg); }
 .dz td img, .dz td .noimg { display:block; width:64px; height:64px; object-fit:contain; background:var(--img); border-radius:6px; font-size:11px; }
+.dz .path { font-family:ui-monospace,Consolas,monospace; font-weight:600; overflow-wrap:anywhere; user-select:all; }
 .dz .foot { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; }
 .feed .dcard { cursor:pointer; } .feed .dcard:hover { border-color:var(--blue); }
 .more { display:block; margin:12px auto 0; font:inherit; padding:7px 18px; border-radius:8px; border:1px solid var(--line);
@@ -475,6 +476,8 @@ const api = REMOTE ? {
   askClaude(id, reviewer) { return this.call({ action: "ask_claude", job_id: Number(id), reviewer_label: reviewer }); },
   detailOfDesign(id) { return this.call({ action: "detail", design: Number(id) }); },
   designs(ask) { return this.call({ action: "designs", ...ask }); },
+  collect(ids, reviewer) { return this.call({ action: "collect", ids, reviewer }); },
+  collects() { return this.call({ action: "collects" }); },
   decideJob(id, decision, ip, reviewer) {
     return this.call({ action: "decide_job", job_id: Number(id), decision, ip, reviewer_label: reviewer });
   },
@@ -1491,7 +1494,7 @@ document.addEventListener("visibilitychange", () => {
 
 // ---- 设计: every design on a row, to sort, filter, and export with its files' paths -----------
 const dz = { sort: "orders", dir: "desc", verdict: "", sonnet: "", local: "", human: "", min: "", q: "",
-             offset: 0, rows: [], total: 0, picked: new Map(), busy: false, note: "" };
+             offset: 0, rows: [], total: 0, picked: new Map(), busy: false, note: "", got: null };  // got: the last collect request
 const DZ_PAGE = 50;
 const SAID = { ip: "是 IP", unsure: "拿不准", not_ip: "不是 IP" };
 const LOCAL = { listed: "名单内的 IP", unlisted: "名单外的名字", ignored: "认出了，没采用", nothing: "什么都没认出" };
@@ -1529,15 +1532,53 @@ function designsHtml() {
     <div class="panel"><table><tr><th><input type="checkbox" id="dzAll" ${all ? "checked" : ""} aria-label="选中这一页"></th><th>图</th><th>名称</th><th>结论</th><th>Sonnet</th><th>本地模型</th>
       ${th("orders", "订单数")}<th>客户</th><th>日期</th>${th("first", "第一次出现")}${th("last", "最近一次")}</tr>
       ${dz.rows.map(row).join("") || `<tr><td colspan="11" class="muted">${dz.busy ? "读取中…" : "没有符合条件的设计"}</td></tr>`}</table></div>
+    ${collectHtml()}
     <div class="foot">
       <button id="dzPrev" class="quiet" ${dz.offset ? "" : "disabled"}>上一页</button>
       <span class="muted">${dz.total ? `第 ${num(dz.offset + 1)}–${num(Math.min(dz.offset + DZ_PAGE, dz.total))} 个` : ""}</span>
       <button id="dzNext" class="quiet" ${dz.offset + DZ_PAGE < dz.total ? "" : "disabled"}>下一页</button>
       <span style="flex:1"></span>
       <span class="muted">${dz.note || (dz.picked.size ? `已选 ${num(dz.picked.size)} 个设计` : "勾选要找的设计，或直接导出筛选出的全部")}</span>
-      <button id="dzOut" ${dz.picked.size ? "" : "disabled"}>导出选中的文件清单</button>
+      <button id="dzOut" class="quiet" ${dz.picked.size ? "" : "disabled"}>导出选中的文件清单</button>
       <button id="dzOutAll" class="quiet" ${dz.total ? "" : "disabled"}>导出筛选出的全部（${num(dz.total)} 个）</button>
     </div></div>`;
+}
+
+// One picture per design with the order label cut off, gathered by the host machine in a folder.
+const collecting = () => !!(dz.got && (dz.got.status === "queued" || dz.got.status === "working"));
+function collectHtml() {
+  const g = dz.got, all = dz.total > 0 && dz.total <= 2000;
+  const state = !g ? "" : g.status === "queued" ? `已发出，等检测主机接手…（${num(g.total)} 个设计）`
+    : g.status === "working" ? `正在收集 <b>${num(g.done)}</b> / ${num(g.total)}…`
+    : g.status === "error" ? `上一次没有做完：${esc(g.note || "出错")}`
+    : `上一次收集了 <b>${num(g.saved)}</b> 张，在 <b class="path">${esc(g.folder || "")}</b>`
+      + (g.unlabelled ? `，其中 ${num(g.unlabelled)} 张没找到标签、整张保存了（清单里标着）` : "")
+      + (g.saved < g.total ? `，${num(g.total - g.saved)} 个设计的原文件打不开` : "");
+  return `<div class="panel"><div class="bar2">
+    <b>收集代表图</b><span class="muted">每个设计一张原图，去掉订单标签和二维码，按订单数从多到少编号，附一份清单</span>
+    <span style="flex:1"></span>
+    <button id="dzGet" ${dz.picked.size && !collecting() ? "" : "disabled"}>收集选中的 ${num(dz.picked.size)} 个</button>
+    <button id="dzGetAll" class="quiet" ${all && !collecting() ? "" : "disabled"} title="${all ? "" : "一次最多 2000 个设计，请先筛选"}">收集筛选出的全部（${num(dz.total)} 个）</button>
+  </div>${state ? `<div>${state}</div>` : ""}</div>`;
+}
+let collectTimer = null;
+async function watchCollect() {
+  clearTimeout(collectTimer);
+  if (view !== "designs") return;
+  try { const was = JSON.stringify(dz.got); dz.got = (await api.collects()).requests[0] || null;
+    if (was !== JSON.stringify(dz.got)) drawDesigns(); } catch (e) { /* asked again below */ }
+  if (collecting()) collectTimer = setTimeout(watchCollect, 4000);
+}
+async function askCollect(everything) {
+  let ids = [...dz.picked.keys()];
+  try {
+    if (everything) {
+      ids = [];
+      for (let at = 0; at < dz.total; at += 500) ids = ids.concat((await api.designs({ ...dzAsk(), limit: 500, offset: at, files: true })).items.map(r => r.id));
+    }
+    dz.got = (await api.collect(ids, $("#reviewer").value.trim() || null)).request;
+  } catch (e) { return toast(e.message); }
+  drawDesigns(); watchCollect();
 }
 
 function drawDesigns() {
@@ -1558,6 +1599,8 @@ function drawDesigns() {
   $("#dzAll").onchange = e => { for (const r of dz.rows) { if (e.target.checked) dz.picked.set(r.id, r); else dz.picked.delete(r.id); } dz.note = ""; drawDesigns(); };
   $("#dzPrev").onclick = () => { dz.offset = Math.max(0, dz.offset - DZ_PAGE); loadDesigns(); };
   $("#dzNext").onclick = () => { dz.offset += DZ_PAGE; loadDesigns(); };
+  $("#dzGet").onclick = () => askCollect(false);
+  $("#dzGetAll").onclick = () => askCollect(true);
   $("#dzOut").onclick = () => exportDesigns(false);
   $("#dzOutAll").onclick = () => exportDesigns(true);
 }
@@ -1614,7 +1657,7 @@ function setView(v) {
   $("#q").hidden = v !== "review"; $("#stats").hidden = v !== "review"; $("#reviewer").hidden = v === "dash";
   clearTimeout(pollTimer);
   if (v === "dash") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshDashboard(); }
-  else if (v === "designs") loadDesigns();
+  else if (v === "designs") { loadDesigns(); watchCollect(); }
   else if (v === "machines") { mView = null; $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshMachinesPage(); }
   else if (v === "upload") refreshUploads(); else load();
 }
