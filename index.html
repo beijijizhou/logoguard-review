@@ -169,7 +169,14 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .label { margin-top:14px; padding:14px; border:1px solid var(--line); border-radius:12px; background:var(--bg); display:grid; gap:10px; }
 .label .lq { font-size:15px; font-weight:600; }
 .label .lq b { color:var(--blue); }
-.lbtns { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+.lbtns { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+/* the same two answers on a card that waits for a person: no need to open it */
+.feed .dcard .quick { display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:0 8px 8px; }
+.feed .dcard .quick button { font:inherit; font-size:13px; font-weight:700; padding:6px 2px; border-radius:8px; cursor:pointer;
+                             background:var(--card); border:2px solid var(--line); }
+.feed .dcard .quick .yes { color:var(--red); border-color:var(--red); } .feed .dcard .quick .yes:hover { background:var(--red-bg); }
+.feed .dcard .quick .no { color:var(--green); border-color:var(--green); } .feed .dcard .quick .no:hover { background:var(--green-bg); }
+.feed .dcard .quick button:disabled { opacity:.5; cursor:default; }
 .lbtns button { font:inherit; font-size:15px; font-weight:600; padding:11px 6px; border-radius:10px; cursor:pointer;
                 background:var(--card); color:var(--fg); border:2px solid var(--line); }
 .lbtns .yes { color:var(--red); border-color:var(--red); } .lbtns .no { color:var(--green); border-color:var(--green); }
@@ -741,7 +748,8 @@ function recCard(x) {
     ${x.thumb_url ? `<img src="${esc(x.thumb_url)}" loading="lazy" alt="">` : `<div class="noimg">无缩略图</div>`}
     <span class="badge ${esc(x.verdict)}">${VERDICT[x.verdict] || ""}</span>${x.human ? `<span class="rep">已标注</span>` : x.cached ? `<span class="rep">重复</span>` : ""}
     <div class="cap"><div class="what ${names ? "" : "none"}">${esc(names) || (x.verdict === "pass" ? "没有发现问题" : "")}</div>
-      <div class="when">${hhmm(x.finished_at)}</div></div></div>`;
+      <div class="when">${hhmm(x.finished_at)}</div></div>
+    ${x.verdict === "review" && !x.human ? `<div class="quick"><button class="yes" data-d="infringing">侵权</button><button class="no" data-d="false_positive">放行</button></div>` : ""}</div>`;
 }
 
 function recordsHtml() {
@@ -766,6 +774,7 @@ async function loadRecords(more) {
   box.innerHTML = recordsHtml();
   box.querySelectorAll(".chips button").forEach(b => b.onclick = () => { recFilter = b.dataset.v; loadRecords(false); });
   box.querySelectorAll(".dcard").forEach(c => c.onclick = () => showDetail(c.dataset.job));
+  box.querySelectorAll(".quick button").forEach(b => b.onclick = e => { e.stopPropagation(); quickDecide(b); });
   const m = $("#recMore"); if (m) m.onclick = () => loadRecords(true);
 }
 
@@ -775,6 +784,7 @@ loadRecords.redraw = () => {
   box.innerHTML = recordsHtml();
   box.querySelectorAll(".chips button").forEach(b => b.onclick = () => { recFilter = b.dataset.v; loadRecords(false); });
   box.querySelectorAll(".dcard").forEach(c => c.onclick = () => showDetail(c.dataset.job));
+  box.querySelectorAll(".quick button").forEach(b => b.onclick = e => { e.stopPropagation(); quickDecide(b); });
   const m = $("#recMore"); if (m) m.onclick = () => loadRecords(true);
 };
 
@@ -826,17 +836,16 @@ function detailHtml(d) {
       <div class="label">
         <div class="lq">${d.decision ? `已标注：<b>${DECIDED[d.decision.decision] || ""}</b>${d.decision.ip ? "（" + esc(nameOf(d.decision.ip)) + "）" : ""}${d.decision.reviewer_label ? " · " + esc(d.decision.reviewer_label) : ""} · 可以改` : "你的判断：这张图有没有用别人的 IP？"}</div>
         <div class="lbtns">
-          <button class="yes" data-d="infringing">是，侵权<kbd>1</kbd></button>
-          <button class="no" data-d="false_positive">没问题<kbd>2</kbd></button>
-          <button data-d="unsure">不确定<kbd>3</kbd></button>
+          <button class="yes" data-d="infringing">侵权<kbd>1</kbd></button>
+          <button class="no" data-d="false_positive">放行<kbd>2</kbd></button>
         </div>
         <input id="sheetIp" list="iplist" placeholder="侵权的是哪个 IP（选“是”时填，可以直接写名字）" value="${esc(suggestIp(d))}">
-        <div class="muted">标完自动看下一张 · ← → 换图 · Esc 关闭。标注对这个设计的所有订单生效，以后再出现直接沿用。</div>
+        <div class="muted">标完就关闭，回到列表 · ← → 换图 · Esc 关闭。拿不准的不用标，留着就行。标注对这个设计的所有订单生效，以后再出现直接沿用。</div>
       </div></div></div>
     <h4>判断过程</h4>${body}</div>`;
 }
 
-const DECIDED = { infringing: "侵权", false_positive: "没问题", unsure: "不确定" };
+const DECIDED = { infringing: "侵权", false_positive: "放行", unsure: "不确定" };
 // What to offer as the IP: the earlier human answer, else what the machines named.
 function suggestIp(d) {
   if (d.decision && d.decision.ip) return nameOf(d.decision.ip);
@@ -855,22 +864,41 @@ function sheetStep(dir) {
   if (next) showDetail(next.id); else if (dir > 0) { toast("这一页看完了"); closeSheet(); }
 }
 
+// Record a person's answer for a finished image. Every card of the same design on screen
+// takes it at once: the answer is for the design, whatever order it came in.
+async function recordAnswer(id, decision, ip) {
+  const res = await api.decideJob(id, decision, ip, $("#reviewer").value.trim() || null);
+  toast("已记录：" + DECIDED[decision]);
+  const rec = recs.find(r => String(r.id) === String(id));
+  for (const r of recs) {
+    if (!(r === rec || (rec && rec.design && r.design === rec.design))) continue;
+    if (res.verdict) r.verdict = res.verdict;
+    if (ip) r.labels = ip;
+    r.human = decision;
+  }
+}
+
 async function sheetDecide(decision) {
   const id = sheetJob, text = ($("#sheetIp") || {}).value || "";
   if (!id) return;
   const ip = decision === "infringing" && text.trim() ? (ipByName[text.trim().toLowerCase()] || text.trim()) : null;
   $("#sheet").querySelectorAll(".lbtns button").forEach(b => { b.disabled = true; });
-  let res;
-  try { res = await api.decideJob(id, decision, ip, $("#reviewer").value.trim() || null); }
+  try { await recordAnswer(id, decision, ip); }
   catch (e) { alert("保存失败：" + e.message); $("#sheet").querySelectorAll(".lbtns button").forEach(b => { b.disabled = false; }); return; }
-  toast("已记录：" + DECIDED[decision]);
+  closeSheet();  // back to the list: the reviewer picks the next one, it is not a queue
+}
+
+// 侵权 / 放行 right on a card. The IP is what the machines named first (it can be corrected
+// in the record); a design that is merely similar to a takedown has no name to offer.
+async function quickDecide(button) {
+  const card = button.closest(".dcard"), id = card.dataset.job, decision = button.dataset.d;
   const rec = recs.find(r => String(r.id) === String(id));
-  if (rec && res.verdict) {  // the card shows the human answer from now on
-    rec.verdict = res.verdict;
-    if (ip) rec.labels = ip;
-    rec.human = decision;
-  }
-  sheetStep(1);
+  const first = ((rec && rec.labels) || "").split("; ").filter(Boolean)[0] || "";
+  const ip = decision === "infringing" && first && !first.startsWith("known:") ? first : null;
+  card.querySelectorAll(".quick button").forEach(b => { b.disabled = true; });
+  try { await recordAnswer(id, decision, ip); }
+  catch (e) { alert("保存失败：" + e.message); }
+  loadRecords.redraw();
 }
 
 async function showDetail(id) {
@@ -889,7 +917,7 @@ document.addEventListener("keydown", e => {
   if (!sheetJob || !$("#sheet").classList.contains("show")) return;
   if (e.key === "Escape") { closeSheet(); return; }
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
-  const d = { "1": "infringing", "2": "false_positive", "3": "unsure" }[e.key];
+  const d = { "1": "infringing", "2": "false_positive" }[e.key];
   if (d) { e.preventDefault(); sheetDecide(d); }
   else if (e.key === "ArrowRight") { e.preventDefault(); sheetStep(1); }
   else if (e.key === "ArrowLeft") { e.preventDefault(); sheetStep(-1); }
