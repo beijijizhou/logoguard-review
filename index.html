@@ -210,6 +210,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .slog tr[data-job] { cursor:pointer; } .slog tr[data-job]:hover td { background:var(--bg); }
 .slog .lthumb { width:44px; height:44px; object-fit:contain; background:var(--img); border-radius:6px; display:block; }
 .rules tr.cur td { background:var(--blue-bg); }
+.dash b.warn { color:var(--red); }
 .cachebar .g { background:var(--blue); } .cachebar .s { background:var(--green); } .cachebar .e { background:var(--amber); }
 @media (max-width:820px) { .mhead b.nm { font-size:19px; } .hlabels span:nth-child(odd) { visibility:hidden; } }
 
@@ -1766,6 +1767,25 @@ function sonnetHtml(d) {
     <td>${l.sonnet ? `<span class="sn ${l.sonnet === "ip" ? "ip" : l.sonnet === "not_ip" ? "no" : "un"}" style="display:inline">${SAID[l.sonnet] || esc(l.sonnet)}</span>` : "–"}</td>
     <td>${change(l)}</td><td style="white-space:normal;text-align:left">${esc(l.names || "")}${l.note ? `<span class="muted"> ${esc(l.note)}</span>` : ""}</td>
     <td>${l.usd != null ? "$" + Number(l.usd).toFixed(4) : "–"}</td></tr>`;
+  const A = d.audit || {}, WB = d.waiting_by || {};
+  const auditRow = k => { const a = A[k] || {}, n = Number(a.asked || 0);
+    const against = k === "block" ? Number(a.not_ip || 0) : k === "pass" ? Number(a.ip || 0) : null;
+    const seen = k === "block" ? [a.not_human_block, a.not_human_pass] : k === "pass" ? [a.ip_human_block, a.ip_human_pass] : null;
+    const cell = (v, good) => `<td>${num(v)} <span class="muted">${pct(v, n)}</span>${good == null ? "" : ""}</td>`;
+    return `<tr><td><span class="pill ${k}">${VERDICT[k]}</span></td><td><b>${num(n)}</b> <span class="muted">${num(a.files)} 张订单图</span></td><td>${num(WB[k])}</td>
+      ${cell(a.ip)}${cell(a.unsure)}${cell(a.not_ip)}
+      <td>${against == null ? `<span class="muted">这一类本来就要人看</span>` : `<b class="${n && against / n > 0.2 ? "warn" : ""}">${num(against)}</b> <span class="muted">${pct(against, n)}</span>`}</td>
+      <td>${seen == null ? "" : (Number(seen[0] || 0) + Number(seen[1] || 0)) ? `人工判侵权 ${num(seen[0])} · 放行 ${num(seen[1])}` : `<span class="muted">还没有</span>`}</td></tr>`; };
+  const P = d.ip_precision || {}, pAll = Number(P.block || 0) + Number(P.pass || 0);
+  const precision = pAll ? `Sonnet 说“是 IP”、人工也判过的设计共 ${num(pAll)} 个：人工判侵权 ${num(P.block)} 个，放行 ${num(P.pass)} 个，Sonnet 说对了 <b>${pct(P.block, pAll)}</b>${pAll < 100 ? "（样本还少，只能参考）" : ""}。到 90% 以上再考虑让它直接拦截。`
+    : `还没有 Sonnet 说“是 IP”、人工也判过的设计，暂时算不出它有多准。`;
+  const dcard = x => `<div class="dcard ${esc(x.was)}" ${x.job ? `data-job="${x.job}"` : ""}>
+    ${x.thumb_url ? `<img src="${esc(x.thumb_url)}" loading="lazy" alt="">` : `<div class="noimg">无缩略图</div>`}
+    <span class="badge ${esc(x.was)}">机器：${VERDICT[x.was] || x.was}</span>
+    <div class="cap"><div class="what">${x.sonnet === "ip" ? `Sonnet：是 IP${x.names ? " · " + esc(x.names) : ""}` : "Sonnet：不是 IP"}</div>
+      <div class="when"><b>${num(x.orders)} 单</b> · 设计 #${x.design}</div>
+      ${x.decided ? `<div class="when">人工已判：<b>${x.design_verdict === "block" ? "侵权" : "放行"}</b></div>` : ""}</div>
+    ${x.decided || !x.job ? "" : `<div class="quick"><button class="yes" data-d="infringing" data-ip="${esc((x.names || "").split("; ")[0])}">侵权</button><button class="no" data-d="false_positive">放行</button></div>`}</div>`;
   const left = Math.max(0, Number(d.limit) - Number(d.spent));
   const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
   return `<div class="dash">
@@ -1773,8 +1793,8 @@ function sonnetHtml(d) {
       <div class="mhead"><b class="nm">Sonnet 复核</b><span class="muted">${n ? `只看订单量 ${n} 单以上的设计，订单最多的先看` : "规则没有打开：每台机器第一次见到一个设计就问，先到先得"}</span>
         <span class="muted" style="margin-left:auto">读取于 ${now} · 每 10 秒自动更新</span></div>
       <div class="mrow"><span class="k">怎么问</span><span>${n ? `机器检测时不再问 Sonnet。一个设计累计到 ${n} 张订单图，检测主机才把它发给 Sonnet；每分钟几个，订单多的排前面。` : "每张图在机器上检测时，只要本地小模型报了清单外的名字，就立刻问 Sonnet，不管这个设计有几单。"}</span></div>
-      <div class="mrow"><span class="k">问哪些</span><span>只问机器自己判的、还没被拦截的设计（待确认或放行）。已经有清单内 IP 或其它规则标出的，直接交给人看，不花这个钱。</span></div>
-      <div class="mrow"><span class="k">回答之后</span><span>Sonnet 说不是 IP → 这个设计放行；Sonnet 确认或自己发现了 IP → 进入待确认，排到复查列表前面。人工判过的不会被改。</span></div>
+      <div class="mrow"><span class="k">问哪些</span><span>机器自己判的设计，拦截、待确认、放行三类轮流问，每一类都从订单最多的开始${n ? `：${n} 单以上的全部，另外每类订单最多的 ${num(d.audit_top)} 个不管几单都问` : ""}。</span></div>
+      <div class="mrow"><span class="k">回答之后</span><span>待确认和放行的：Sonnet 说不是 IP → 放行；确认或自己发现了 IP → 进入待确认，排到前面。<b>已拦截的、被清单内 IP 标出的：只核对，不改结论</b>，相反的意见列在下面等你定。人工判过的不会被改。</span></div>
     </div>
     <div><h2>现在</h2><div class="tiles">
       ${tile("blue", n ? n + `<span style="font-size:15px"> 单以上</span>` : "未开", "规则")}
@@ -1784,6 +1804,14 @@ function sonnetHtml(d) {
       ${tile("amber", num(t.to_review), "放行 → 待确认", "Sonnet 发现了 IP")}
       ${tile("green", num(t.to_pass), "待确认 → 放行", "Sonnet 说不是 IP")}
     </div></div>
+    <div class="panel"><div class="mhead"><h2 style="margin:0">核对：机器的三类结论，Sonnet 同意多少</h2>
+        <span class="muted">每一类都从订单最多的设计看起 · 哪一类“不同意”的比例高，就是哪一类的规则要修</span></div>
+      <table><tr><th>机器的结论</th><th>已核对</th><th>还在等</th><th>Sonnet 说是 IP</th><th>拿不准</th><th>Sonnet 说不是 IP</th><th>和机器相反的</th><th>相反的里人工看过</th></tr>
+        ${["block", "review", "pass"].map(auditRow).join("")}</table>
+      <div class="hkey">${precision}</div></div>
+    <div class="panel"><div class="mhead"><h2 style="margin:0">Sonnet 和机器结论相反的 ${num((d.disagree || []).filter(x => !x.decided).length)} 个设计，等你定</h2>
+        <span class="muted">订单多的在前 · 你点的结论对这个设计永久有效，同时用来算 Sonnet 到底有多准 · 点图看判断过程</span></div>
+      <div class="feed mfeed" id="sonnetDisagree">${(d.disagree || []).map(dcard).join("") || `<span class="muted">还没有。核对开始后，机器拦截而 Sonnet 说不是 IP 的、机器放行而 Sonnet 说是 IP 的，会列在这里。</span>`}</div></div>
     <div class="panel"><h2>规则可以怎么定 <span class="muted" style="font-weight:400">按现在总账里的数字 · 每个设计约 ${"$" + per.toFixed(4)}</span></h2>
       <table class="rules"><tr><th>只看</th><th>设计数</th><th>对应的订单图</th><th>还没让 Sonnet 看过的</th><th>看完这些要花</th><th></th></tr>${(d.choices || []).map(choice).join("")}</table>
       <div class="mbtns">${n ? `<button class="quiet" data-rule="off">关闭规则，回到每张图都问</button>` : ""}<span class="muted">每天总额度 ${money(d.limit)} 不变，花完当天就停，第二天接着从订单最多的看</span></div></div>
@@ -1800,6 +1828,17 @@ async function refreshSonnet() {
     if (view !== "sonnet") return;
     $("#main").innerHTML = sonnetHtml(d);
     $("#main").querySelectorAll("tr[data-job]").forEach(r => r.onclick = () => showDetail(r.dataset.job));
+    $("#main").querySelectorAll("#sonnetDisagree .dcard[data-job]").forEach(c => c.onclick = () => showDetail(c.dataset.job));
+    $("#main").querySelectorAll("#sonnetDisagree .quick button").forEach(b => b.onclick = async e => {
+      e.stopPropagation();
+      const card = b.closest(".dcard");
+      card.querySelectorAll("button").forEach(x => x.disabled = true);
+      try {
+        await api.decideJob(card.dataset.job, b.dataset.d, b.dataset.d === "infringing" ? (b.dataset.ip || null) : null, $("#reviewer").value.trim() || null);
+        toast("已记录：" + (b.dataset.d === "infringing" ? "侵权" : "放行") + "，这个设计以后都按这个结论");
+      } catch (err) { toast(err.message); }
+      refreshSonnet();
+    });
     $("#main").querySelectorAll("button[data-rule]").forEach(b => b.onclick = async e => {
       e.stopPropagation();
       const off = b.dataset.rule === "off", n = off ? null : Number(b.dataset.rule), per = Number(d.avg_usd) || 0.0058;
