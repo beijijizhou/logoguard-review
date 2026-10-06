@@ -684,7 +684,7 @@ function dashboardHtml(d) {
     <div class="panel hero">
       <div class="hero-top"><span class="dot ${paused ? "paused" : waiting || busy ? "live" : ""}"></span><b>${stateName}</b>
         <span class="muted">${stateSub}</span>
-        <span class="read">读取于 ${now} · ${active ? "每 5 秒" : "每分钟"}自动更新</span></div>
+        <span class="read">读取于 ${now} · ${active ? "每 10 秒" : "每分钟"}自动更新</span></div>
       <div class="hero-main">
         <div class="hero-num"><b>${num(done)}</b><span>/ ${num(t.files)} 张 · ${mmdd(t.day)}</span><em>${pct(done, t.files)}</em></div>
         <div class="hero-eta">${waiting ? `还剩 <b>${num(waiting)}</b> 张 · 最近 10 分钟 <b>${num(per10)}</b> 张 · <b>${eta.replace("大约还要 ", "约 ")}</b>` : "队列里没有待检测的图"}</div>
@@ -706,7 +706,7 @@ function dashboardHtml(d) {
       </div>
       <div class="hero-notes">${scanText ? `<span>${scanText}</span>` : ""}<span>${fleetText}</span></div>
     </div>
-    <div class="panel"><div class="rechead"><h2>检测记录</h2><span class="muted">最新的在前 · ${active ? "新结果每 5 秒自动出现" : "有新结果时自动出现"} · 点一张看它是怎么判断出来的</span></div><div id="records">${recordsHtml()}</div></div>
+    <div class="panel"><div class="rechead"><h2>检测记录</h2><span class="muted">最新的在前 · ${active ? "新结果每 10 秒自动出现" : "有新结果时自动出现"} · 点一张看它是怎么判断出来的</span></div><div id="records"></div></div>
     <div><h2>最近一天（${mmdd(t.day)}）</h2><div class="tiles">
       ${tile("", num(t.files), "检查的图", t.waiting ? `还有 ${num(t.waiting)} 张在排队` : "全部检完")}
       ${tile("red", num(t.block), "直接拦截", pct(t.block, t.done) + " · 确定侵权")}
@@ -739,6 +739,21 @@ const VERDICT = { block: "拦截", review: "待确认", pass: "放行" };
 const LAYER = { ocr: "文字识别", owl: "图案检测", gallery: "图库比对", vlm: "本地小模型", claude: "Claude 复核" };
 const ISIP = { yes: "是 IP", no: "不是 IP", unsure: "拿不准" };
 let recs = [], recFilter = "", recBusy = false, recExtended = false;  // extended: "再看 48 张" was used
+let recsDrawn = "";  // what the list on screen was drawn from; redrawn only when this changes
+
+// The server signs a fresh link for a thumbnail on every answer. Keep the first one per picture
+// (links last 12 h; kept 10) so the browser shows it from its cache instead of downloading it again.
+const thumbLinks = new Map();
+function pinThumbs(list) {
+  for (const x of list || []) {
+    if (!x || !x.thumb_path || !x.thumb_url) continue;
+    const had = thumbLinks.get(x.thumb_path);
+    if (had && Date.now() - had.at < 36000000) x.thumb_url = had.url;
+    else thumbLinks.set(x.thumb_path, { url: x.thumb_url, at: Date.now() });
+  }
+  return list;
+}
+const recsKey = () => recFilter + "|" + recs.map(r => r.id + (r.human || "") + r.verdict).join(",");
 const hhmm = s => new Date(s).toLocaleTimeString("zh-CN", { hour12: false });
 const nameOf = l => ips[l]?.name || l;
 
@@ -764,23 +779,20 @@ async function loadRecords(more) {
   recBusy = true;
   try {
     const before = more && recs.length ? recs[recs.length - 1].finished_at : "";
-    const got = (await api.jobs(recFilter, before)).items;
+    const got = pinThumbs((await api.jobs(recFilter, before)).items);
     recs = more ? recs.concat(got) : got;
     recExtended = !!more;
   } catch (e) { toast(e.message); }
   recBusy = false;
-  const box = $("#records");
-  if (!box) return;
-  box.innerHTML = recordsHtml();
-  box.querySelectorAll(".chips button").forEach(b => b.onclick = () => { recFilter = b.dataset.v; loadRecords(false); });
-  box.querySelectorAll(".dcard").forEach(c => c.onclick = () => showDetail(c.dataset.job));
-  box.querySelectorAll(".quick button").forEach(b => b.onclick = e => { e.stopPropagation(); quickDecide(b); });
-  const m = $("#recMore"); if (m) m.onclick = () => loadRecords(true);
+  recsDrawn = "";
+  loadRecords.redraw();
 }
 
 loadRecords.redraw = () => {
   const box = $("#records");
   if (!box) return;
+  if (box.childElementCount && recsDrawn === recsKey()) return;  // already shows exactly this
+  recsDrawn = recsKey();
   box.innerHTML = recordsHtml();
   box.querySelectorAll(".chips button").forEach(b => b.onclick = () => { recFilter = b.dataset.v; loadRecords(false); });
   box.querySelectorAll(".dcard").forEach(c => c.onclick = () => showDetail(c.dataset.job));
@@ -928,7 +940,7 @@ const TYPING_GRACE_MS = 6000;
 const todayMmdd = () => { const n = new Date(); return String(n.getMonth() + 1).padStart(2, "0") + String(n.getDate()).padStart(2, "0"); };
 
 async function refreshDashboard() {
-  if (view !== "dash") return;
+  if (view !== "dash" || document.hidden) return;
   clearTimeout(pollTimer);
   // Do not redraw under someone typing the date - but only while they are typing: a caret left
   // in the box must not freeze the page.
@@ -945,15 +957,17 @@ async function refreshDashboard() {
       pollTimer = setTimeout(refreshDashboard, Math.min(60000, 5000 * dashFailed));
       return;
     }
+    pinThumbs(data.top_designs); pinThumbs(data.recent);
+    // The numbers are redrawn every time, the record list is not: its cards (and their pictures)
+    // are lifted out and put back, so nothing flickers or reloads under the reader's eyes.
+    const kept = $("#records");
     $("#main").innerHTML = dashboardHtml(data);
-    // The numbers above are redrawn every time; the record list only when something new finished
-    // (or it was never loaded), so it does not jump under the reader's eyes.
-    const fresh = (await api.jobs(recFilter, "").catch(() => ({ items: [] }))).items;
-    const stamp = fresh.length ? fresh[0].id + "" : "";
-    if (stamp !== lastSeen && !$("#sheet").classList.contains("show")) {
+    if (kept && kept.childElementCount) $("#records").replaceWith(kept);
+    // Ask for the list only when the newest finished image changed (the numbers already say which).
+    const stamp = (data.recent && data.recent[0] ? data.recent[0].id : "") + "";
+    if ((stamp !== lastSeen || !recs.length) && !$("#sheet").classList.contains("show")) {
+      const fresh = pinThumbs((await api.jobs(recFilter, "").catch(() => ({ items: [] }))).items);
       lastSeen = stamp;
-      // Put only the new ones in front and keep the cards already shown as they are: their image
-      // links stay the same, so the browser does not download 48 thumbnails again every 5 seconds.
       const have = new Set(recs.map(r => r.id));
       recs = fresh.filter(r => !have.has(r.id)).concat(recs);
       if (!recExtended) recs = recs.slice(0, 48);
@@ -989,8 +1003,14 @@ async function refreshDashboard() {
       refreshDashboard();
     };
   }
-  pollTimer = setTimeout(refreshDashboard, active ? 5000 : 60000);
+  pollTimer = setTimeout(refreshDashboard, active ? 10000 : 60000);
 }
+// A tab nobody is looking at does not keep asking; it catches up when it is looked at again.
+document.addEventListener("visibilitychange", () => {
+  if (view !== "dash") return;
+  clearTimeout(pollTimer);
+  if (!document.hidden) refreshDashboard();
+});
 
 function setView(v) {
   view = v;
