@@ -207,6 +207,9 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .held span { padding:2px 9px; border-radius:8px; background:var(--bg); border:1px solid var(--line); max-width:260px;
              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .mfeed .dcard.err .noimg { color:var(--red); }
+.slog tr[data-job] { cursor:pointer; } .slog tr[data-job]:hover td { background:var(--bg); }
+.slog .lthumb { width:44px; height:44px; object-fit:contain; background:var(--img); border-radius:6px; display:block; }
+.rules tr.cur td { background:var(--blue-bg); }
 .cachebar .g { background:var(--blue); } .cachebar .s { background:var(--green); } .cachebar .e { background:var(--amber); }
 @media (max-width:820px) { .mhead b.nm { font-size:19px; } .hlabels span:nth-child(odd) { visibility:hidden; } }
 
@@ -354,6 +357,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
     <button data-view="designs" class="sub">设计</button>
     <button data-view="machines" class="sub">机器</button>
     <button data-view="cache" class="sub">查重缓存</button>
+    <button data-view="sonnet" class="sub">Sonnet 复核</button>
   </nav>
   <main id="main"><div class="empty">加载中…</div></main>
 </div>
@@ -489,6 +493,8 @@ const api = REMOTE ? {
   askClaudeImage(imageId, reviewer) { return this.call({ action: "ask_claude", image_id: imageId, reviewer_label: reviewer }); },
   detail(id) { return this.call({ action: "detail", id: Number(id) }); },
   cache() { return this.call({ action: "cache", days: 14 }); },
+  sonnet() { return this.call({ action: "sonnet" }); },
+  sonnetRule(n) { return this.call({ action: "sonnet_rule", min_orders: n }); },
   machines(since) { return this.call({ action: "machines", since }); },
   machine(machine, since, hours) { return this.call({ action: "machine", machine, since, hours }); },
   machinePause(machine, paused) { return this.call({ action: "machine_pause", machine, paused }); },
@@ -1491,9 +1497,9 @@ async function refreshDashboard() {
 }
 // A tab nobody is looking at does not keep asking; it catches up when it is looked at again.
 document.addEventListener("visibilitychange", () => {
-  if (view !== "dash" && view !== "machines" && view !== "cache") return;
+  if (!["dash", "machines", "cache", "sonnet"].includes(view)) return;
   clearTimeout(pollTimer);
-  if (!document.hidden) (view === "dash" ? refreshDashboard : view === "cache" ? refreshCache : refreshMachinesPage)();
+  if (!document.hidden) ({ dash: refreshDashboard, cache: refreshCache, sonnet: refreshSonnet, machines: refreshMachinesPage })[view]();
 });
 
 // ---- 设计: every design on a row, to sort, filter, and export with its files' paths -----------
@@ -1740,6 +1746,79 @@ async function refreshCache() {
   pollTimer = setTimeout(refreshCache, cacheFailed ? Math.min(60000, 5000 * cacheFailed) : 10000);
 }
 
+// ---- Sonnet by order volume: the rule, what it costs, and every question it was asked ---------
+let sonnetFailed = 0;
+function sonnetHtml(d) {
+  const n = d.min_orders, t = d.today || {}, per = Number(d.avg_usd) || 0.0058;
+  const tile = (cls, value, label, note) => `<div class="tile ${cls}"><b>${value}</b><span>${label}</span>${note ? `<small>${note}</small>` : ""}</div>`;
+  const money = v => "$" + Number(v || 0).toFixed(2);
+  const choice = c => `<tr class="${c.n === n ? "cur" : ""}"><td>${c.n} 单以上${c.n === n ? ` <span class="pill idle">现在的规则</span>` : ""}</td>
+    <td>${num(c.designs)}</td><td>${num(c.files)}</td><td>${num(c.to_ask)}</td><td>约 ${money(c.to_ask * per)}</td>
+    <td>${c.n === n ? "" : `<button class="linkish" data-rule="${c.n}" data-ask="${c.to_ask}">改成这个</button>`}</td></tr>`;
+  const change = l => !l.sonnet ? `<span class="muted">没有问</span>`
+    : l.became == null ? `<span class="muted">没有改动</span>`
+    : l.was === l.became ? `保持 <span class="pill ${esc(l.became)}">${VERDICT[l.became] || l.became}</span>`
+    : `<span class="pill ${esc(l.was)}">${VERDICT[l.was] || l.was}</span> → <span class="pill ${esc(l.became)}">${VERDICT[l.became] || l.became}</span>`;
+  const row = l => `<tr ${l.job ? `data-job="${l.job}" title="点开看这个设计的判断过程"` : ""}>
+    <td>${l.thumb_url ? `<img class="lthumb" src="${esc(l.thumb_url)}" loading="lazy" alt="">` : ""}</td>
+    <td>${new Date(l.at).toLocaleString("zh-CN", { hour12: false, month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+    <td>#${l.design}</td><td><b>${num(l.orders)}</b> 单</td>
+    <td>${l.sonnet ? `<span class="sn ${l.sonnet === "ip" ? "ip" : l.sonnet === "not_ip" ? "no" : "un"}" style="display:inline">${SAID[l.sonnet] || esc(l.sonnet)}</span>` : "–"}</td>
+    <td>${change(l)}</td><td style="white-space:normal;text-align:left">${esc(l.names || "")}${l.note ? `<span class="muted"> ${esc(l.note)}</span>` : ""}</td>
+    <td>${l.usd != null ? "$" + Number(l.usd).toFixed(4) : "–"}</td></tr>`;
+  const left = Math.max(0, Number(d.limit) - Number(d.spent));
+  const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  return `<div class="dash">
+    <div class="panel hero">
+      <div class="mhead"><b class="nm">Sonnet 复核</b><span class="muted">${n ? `只看订单量 ${n} 单以上的设计，订单最多的先看` : "规则没有打开：每台机器第一次见到一个设计就问，先到先得"}</span>
+        <span class="muted" style="margin-left:auto">读取于 ${now} · 每 10 秒自动更新</span></div>
+      <div class="mrow"><span class="k">怎么问</span><span>${n ? `机器检测时不再问 Sonnet。一个设计累计到 ${n} 张订单图，检测主机才把它发给 Sonnet；每分钟几个，订单多的排前面。` : "每张图在机器上检测时，只要本地小模型报了清单外的名字，就立刻问 Sonnet，不管这个设计有几单。"}</span></div>
+      <div class="mrow"><span class="k">问哪些</span><span>只问机器自己判的、还没被拦截的设计（待确认或放行）。已经有清单内 IP 或其它规则标出的，直接交给人看，不花这个钱。</span></div>
+      <div class="mrow"><span class="k">回答之后</span><span>Sonnet 说不是 IP → 这个设计放行；Sonnet 确认或自己发现了 IP → 进入待确认，排到复查列表前面。人工判过的不会被改。</span></div>
+    </div>
+    <div><h2>现在</h2><div class="tiles">
+      ${tile("blue", n ? n + `<span style="font-size:15px"> 单以上</span>` : "未开", "规则")}
+      ${tile("", num(d.waiting), "在等 Sonnet 看的设计", n ? `对应 ${num(d.waiting_files)} 张订单图 · 约 ${money(d.waiting * per)}` : "规则没开")}
+      ${tile(left < 0.5 ? "red" : "", money(d.spent) + `<span style="font-size:15px"> / ${money(d.limit)}</span>`, "今天 Claude 已用", left < 0.5 ? "今天的额度用完了，明天继续" : `还剩 ${money(left)}`)}
+      ${tile("", num(t.asked), "今天按订单量问了", `花了 ${money(t.usd)}`)}
+      ${tile("amber", num(t.to_review), "放行 → 待确认", "Sonnet 发现了 IP")}
+      ${tile("green", num(t.to_pass), "待确认 → 放行", "Sonnet 说不是 IP")}
+    </div></div>
+    <div class="panel"><h2>规则可以怎么定 <span class="muted" style="font-weight:400">按现在总账里的数字 · 每个设计约 ${"$" + per.toFixed(4)}</span></h2>
+      <table class="rules"><tr><th>只看</th><th>设计数</th><th>对应的订单图</th><th>还没让 Sonnet 看过的</th><th>看完这些要花</th><th></th></tr>${(d.choices || []).map(choice).join("")}</table>
+      <div class="mbtns">${n ? `<button class="quiet" data-rule="off">关闭规则，回到每张图都问</button>` : ""}<span class="muted">每天总额度 ${money(d.limit)} 不变，花完当天就停，第二天接着从订单最多的看</span></div></div>
+    <div class="panel"><div class="mhead"><h2 style="margin:0">每一次提问</h2><span class="muted">最近 ${(d.log || []).length} 条，最新的在前</span></div>
+      ${(d.log || []).length ? `<table class="slog"><tr><th></th><th>时间</th><th>设计</th><th>订单</th><th>Sonnet 说</th><th>结论变化</th><th>它认出的 / 备注</th><th>花费</th></tr>${d.log.map(row).join("")}</table>`
+        : `<span class="muted">${n ? "还没有问过。主机每分钟看一次有没有到线的设计；今天的额度用完时要等到明天。" : "规则没有打开，这里没有记录。"}</span>`}</div>
+    </div>`;
+}
+async function refreshSonnet() {
+  if (view !== "sonnet" || document.hidden) return;
+  clearTimeout(pollTimer);
+  try {
+    const d = await api.sonnet(); pinThumbs(d.log); sonnetFailed = 0;
+    if (view !== "sonnet") return;
+    $("#main").innerHTML = sonnetHtml(d);
+    $("#main").querySelectorAll("tr[data-job]").forEach(r => r.onclick = () => showDetail(r.dataset.job));
+    $("#main").querySelectorAll("button[data-rule]").forEach(b => b.onclick = async e => {
+      e.stopPropagation();
+      const off = b.dataset.rule === "off", n = off ? null : Number(b.dataset.rule), per = Number(d.avg_usd) || 0.0058;
+      const say = off ? "关闭规则？之后每台机器第一次见到一个设计就会问 Sonnet，额度先到先得。"
+        : `改成只看 ${n} 单以上的设计？\n\n还没看过的有 ${b.dataset.ask} 个，全部看完约 $${(b.dataset.ask * per).toFixed(2)}，在每天 $${d.limit} 的额度内分天花完。`;
+      if (!confirm(say)) return;
+      b.disabled = true;
+      try { await api.sonnetRule(n); toast(off ? "规则已关闭" : `已改成 ${n} 单以上`); } catch (err) { toast(err.message); }
+      refreshSonnet();
+    });
+  } catch (e) {
+    sonnetFailed++;
+    if (view !== "sonnet") return;
+    if ($("#main .dash")) toast("读取失败，稍后自动重试：" + e.message);
+    else $("#main").innerHTML = `<div class="empty">加载失败：${esc(e.message)}，正在重试…</div>`;
+  }
+  pollTimer = setTimeout(refreshSonnet, sonnetFailed ? Math.min(60000, 5000 * sonnetFailed) : 10000);
+}
+
 function setView(v) {
   view = v;
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
@@ -1747,6 +1826,7 @@ function setView(v) {
   clearTimeout(pollTimer);
   if (v === "dash") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshDashboard(); }
   else if (v === "designs") { loadDesigns(); watchCollect(); }
+  else if (v === "sonnet") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshSonnet(); }
   else if (v === "cache") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshCache(); }
   else if (v === "machines") { mView = null; $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshMachinesPage(); }
   else if (v === "upload") refreshUploads(); else load();
