@@ -259,7 +259,21 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .chips button.on { background:var(--fg); color:var(--bg); border-color:var(--fg); }
 .chips .levels { display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex-basis:100%; padding-top:4px; }
 .chips .levels button { border-radius:8px; }
-.chips .sales { flex-basis:100%; font-size:14px; }
+/* the designs table */
+.dz { display:flex; flex-direction:column; gap:12px; grid-column:1/-1; min-width:0; }
+.dz .bar2 { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; }
+.dz .bar2 label { display:flex; gap:6px; align-items:center; font-size:14px; color:var(--muted); }
+.dz .bar2 input[type=search] { width:11em; } .dz .bar2 input[type=number] { width:5em; }
+.dz table { border-collapse:collapse; width:100%; font-size:14px; }
+.dz th, .dz td { padding:6px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
+.dz th { color:var(--muted); font-weight:500; font-size:13px; white-space:nowrap; position:sticky; top:0; background:var(--card); }
+.dz th.sort { cursor:pointer; } .dz th.sort:hover, .dz th.by { color:var(--fg); }
+.dz td.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.dz td.name { min-width:14em; max-width:26em; overflow-wrap:anywhere; }
+.dz td { white-space:nowrap; } .dz td.name, .dz td.wrap { white-space:normal; }
+.dz tr.row { cursor:pointer; } .dz tr.row:hover td { background:var(--bg); }
+.dz td img, .dz td .noimg { display:block; width:64px; height:64px; object-fit:contain; background:var(--img); border-radius:6px; font-size:11px; }
+.dz .foot { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; }
 .feed .dcard { cursor:pointer; } .feed .dcard:hover { border-color:var(--blue); }
 .more { display:block; margin:12px auto 0; font:inherit; padding:7px 18px; border-radius:8px; border:1px solid var(--line);
         background:var(--card); color:var(--fg); cursor:pointer; }
@@ -310,6 +324,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
     <button data-view="review" class="on">人工复查</button>
     <button data-view="upload">上传检测</button>
     <button data-view="dash">数据总览</button>
+    <button data-view="designs">设计</button>
     <button data-view="machines">机器</button>
   </span>
   <select id="mode" aria-label="复查内容">
@@ -459,6 +474,7 @@ const api = REMOTE ? {
   command(machine, what, reviewer) { return this.call({ action: "command", machine, do: what, reviewer_label: reviewer }); },
   askClaude(id, reviewer) { return this.call({ action: "ask_claude", job_id: Number(id), reviewer_label: reviewer }); },
   detailOfDesign(id) { return this.call({ action: "detail", design: Number(id) }); },
+  designs(ask) { return this.call({ action: "designs", ...ask }); },
   decideJob(id, decision, ip, reviewer) {
     return this.call({ action: "decide_job", job_id: Number(id), decision, ip, reviewer_label: reviewer });
   },
@@ -1120,11 +1136,8 @@ const SEEN = {
     note: "本地模型每张图都看；「规则没采用」是把握不够、类别不送审或属于忽略词" },
   human: { name: "人检查过的", levels: { infringing: "判为侵权", false_positive: "判为放行", unsure: "拿不准" },
     note: "按标注时间，最新的在前；标注对这个设计的所有订单生效" },
-  top: { name: "卖得最多的", levels: { 10: "10 单以上", 5: "5–9 单", 2: "2–4 单", 1: "只有 1 单" }, order: ["10", "5", "2", "1"],
-    note: "同一个图案出现在多少个订单文件里，越多越好卖；每个设计一张卡片，数字是设计的个数" },
 };
-const seenLevel = { sonnet: "ip", local: "listed", human: "infringing", top: "10" };
-let seenTotals = null;  // of "top": {designs, images}
+const seenLevel = { sonnet: "ip", local: "listed", human: "infringing" };
 let seenCounts = null, seenNext = 0, seenMore = false;  // of the list on screen; next row to ask for
 const paged = () => recFilter === "easy" || recFilter in SEEN;  // lists read by position, not by time
 
@@ -1183,16 +1196,15 @@ function recCard(x) {
     <span class="badge ${esc(x.verdict)}">${VERDICT[x.verdict] || ""}</span>${x.human ? `<span class="rep">已标注</span>` : x.cached ? `<span class="rep">重复</span>` : ""}
     <div class="cap"><div class="what ${names ? "" : "none"}">${esc(names) || (x.verdict === "pass" ? "没有发现问题" : "")}</div>
       ${claudeLine(x.claude)}
-      <div class="when">${x.easy ? `${x.orders > 1 ? `<b>${num(x.orders)} 单</b> · ` : ""}${esc(PRIO[x.priority] || "")}` : x.top ? `<b>${num(x.orders)} 单</b>` : (x.orders > 1 ? `<b>${num(x.orders)} 单</b> · ` : "") + hhmm(x.finished_at) + (x.same > 1 ? ` · 这一页 ${num(x.same)} 张` : "")}</div></div>
+      <div class="when">${x.easy ? `${x.orders > 1 ? `<b>${num(x.orders)} 单</b> · ` : ""}${esc(PRIO[x.priority] || "")}` : (x.orders > 1 ? `<b>${num(x.orders)} 单</b> · ` : "") + hhmm(x.finished_at) + (x.same > 1 ? ` · 这一页 ${num(x.same)} 张` : "")}</div></div>
     ${(x.verdict === "review" || x.easy || x.seen) && !x.human ? `<div class="quick"><button class="yes" data-d="infringing">侵权</button><button class="no" data-d="false_positive">放行</button></div>` : ""}</div>`;
 }
 
 function recordsHtml() {
   const chip = (v, label) => `<button data-v="${v}" class="${recFilter === v ? "on" : ""}">${label}</button>`;
   return `<div class="chips">${chip("easy", "最容易判断的")}${chip("", "全部")}${chip("block", "拦截")}${chip("review", "待确认")}${chip("pass", "放行")}${Object.keys(SEEN).map(k => chip(k, SEEN[k].name)).join("")}
-      ${recFilter in SEEN ? `<span class="levels">${(SEEN[recFilter].order || Object.keys(SEEN[recFilter].levels)).map(l => `<button data-l="${l}" class="${seenLevel[recFilter] === l ? "on" : ""}">${SEEN[recFilter].levels[l]}${seenCounts ? ` <b>${num(seenCounts[l])}</b>` : ""}</button>`).join("")}
-        <span class="muted">${recFilter === "top" ? "订单最多的在前" : "最新的在前"} · ${SEEN[recFilter].note}</span>
-        ${recFilter === "top" && seenTotals ? `<span class="sales">一共检过 <b>${num(seenTotals.images)}</b> 张图，是 <b>${num(seenTotals.designs)}</b> 个不同的设计：<b>${num(seenTotals.images - seenTotals.designs)}</b> 张（${pct(seenTotals.images - seenTotals.designs, seenTotals.images)}）是重复的</span>` : ""}</span>` : ""}
+      ${recFilter in SEEN ? `<span class="levels">${Object.keys(SEEN[recFilter].levels).map(l => `<button data-l="${l}" class="${seenLevel[recFilter] === l ? "on" : ""}">${SEEN[recFilter].levels[l]}${seenCounts ? ` <b>${num(seenCounts[l])}</b>` : ""}</button>`).join("")}
+        <span class="muted">最新的在前 · ${SEEN[recFilter].note}</span></span>` : ""}
       ${recFilter === "easy" ? `<span class="muted" style="align-self:center">等人确认的设计，最明显的排前面（机器已拦截 → Sonnet 确认是 IP → …），每个设计只出现一次</span>` : ""}</div>
     <div class="feed" id="recFeed">${recsShown().map(recCard).join("") || `<span class="muted">${recFilter === "easy" ? "没有等人确认的设计了" : "暂无"}</span>`}</div>
     ${(recFilter in SEEN ? seenMore : recs.length && recs.length % 48 === 0) ? `<button class="more" id="recMore">再看 48 张</button>` : ""}`;
@@ -1207,7 +1219,6 @@ async function loadRecords(more) {
     const at = !more ? 0 : recFilter in SEEN ? seenNext : recFilter === "easy" ? recs.length : 0;
     const res = await api.jobs(recFilter, before, at, seenLevel[recFilter]);
     seenCounts = res.counts || null;
-    seenTotals = res.totals || null;
     if (res.counts) { seenNext = at + 48; seenMore = !!res.more; }
     const got = pinThumbs(res.items);
     recs = more ? recs.concat(got) : got;
@@ -1478,12 +1489,132 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) (view === "dash" ? refreshDashboard : refreshMachinesPage)();
 });
 
+// ---- 设计: every design on a row, to sort, filter, and export with its files' paths -----------
+const dz = { sort: "orders", dir: "desc", verdict: "", sonnet: "", local: "", human: "", min: "", q: "",
+             offset: 0, rows: [], total: 0, picked: new Map(), busy: false, note: "" };
+const DZ_PAGE = 50;
+const SAID = { ip: "是 IP", unsure: "拿不准", not_ip: "不是 IP" };
+const LOCAL = { listed: "名单内的 IP", unlisted: "名单外的名字", ignored: "认出了，没采用", nothing: "什么都没认出" };
+const BY = { human: "人工", takedown: "Temu 下架", claude: "Sonnet", machine: "机器" };
+const dzAsk = () => ({ sort: dz.sort, dir: dz.dir, verdict: dz.verdict, sonnet: dz.sonnet, local: dz.local,
+                       human: dz.human, min: Number(dz.min) || 0, q: dz.q });
+const dayTime = s => s ? new Date(s).toLocaleString("zh-CN", { hour12: false, month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+
+function designsHtml() {
+  const opt = (v, label, now) => `<option value="${v}" ${String(now) === String(v) ? "selected" : ""}>${label}</option>`;
+  const pick = (key, label, opts) => `<label>${label}<select data-f="${key}">${opt("", "全部", dz[key])}${Object.entries(opts).map(([v, l]) => opt(v, l, dz[key])).join("")}</select></label>`;
+  const th = (key, label) => `<th class="sort ${dz.sort === key ? "by" : ""}" data-s="${key}" title="点一下按它排序，再点一下反过来">${label}${dz.sort === key ? (dz.dir === "desc" ? " ↓" : " ↑") : ""}</th>`;
+  const all = dz.rows.length && dz.rows.every(r => dz.picked.has(r.id));
+  const row = r => `<tr class="row" data-job="${r.job || ""}">
+    <td><input type="checkbox" data-id="${r.id}" ${dz.picked.has(r.id) ? "checked" : ""} aria-label="选中设计 ${r.id}"></td>
+    <td>${r.thumb_url ? `<img src="${esc(r.thumb_url)}" loading="lazy" alt="">` : `<div class="noimg"></div>`}</td>
+    <td class="name">${esc(r.labels.split("; ").filter(Boolean).map(nameOf).join("、")) || `<span class="muted">没有认出名字</span>`}<div class="muted">#${r.id}</div></td>
+    <td><span class="pill ${esc(r.verdict)}">${VERDICT[r.verdict] || ""}</span> <span class="muted">${BY[r.source] || esc(r.source)}</span></td>
+    <td>${r.sonnet ? SAID[r.sonnet] || esc(r.sonnet) : `<span class="muted">没问</span>`}</td>
+    <td>${r.local ? LOCAL[r.local] || esc(r.local) : `<span class="muted">–</span>`}</td>
+    <td class="n"><b>${num(r.orders)}</b></td>
+    <td class="wrap">${esc(r.customers.join("、"))}</td>
+    <td class="n">${esc(r.days.map(mmdd).join("、"))}</td>
+    <td class="n">${dayTime(r.first_at)}</td><td class="n">${dayTime(r.last_at)}</td></tr>`;
+  return `<div class="dz">
+    <div class="panel"><div class="bar2">
+      ${pick("verdict", "结论", { block: "拦截", review: "待确认", pass: "放行" })}
+      ${pick("human", "人工标注", { yes: "标过", no: "没标过" })}
+      ${pick("sonnet", "Sonnet", { ...SAID, none: "没问过" })}
+      ${pick("local", "本地模型", LOCAL)}
+      <label>至少 <input type="number" min="1" data-f="min" value="${esc(dz.min)}" placeholder="1"> 单</label>
+      <label>名称 <input type="search" data-f="q" value="${esc(dz.q)}" placeholder="如 Disney"></label>
+      <span class="muted">${dz.busy ? "读取中…" : `共 <b>${num(dz.total)}</b> 个设计`}</span>
+    </div></div>
+    <div class="panel"><table><tr><th><input type="checkbox" id="dzAll" ${all ? "checked" : ""} aria-label="选中这一页"></th><th>图</th><th>名称</th><th>结论</th><th>Sonnet</th><th>本地模型</th>
+      ${th("orders", "订单数")}<th>客户</th><th>日期</th>${th("first", "第一次出现")}${th("last", "最近一次")}</tr>
+      ${dz.rows.map(row).join("") || `<tr><td colspan="11" class="muted">${dz.busy ? "读取中…" : "没有符合条件的设计"}</td></tr>`}</table></div>
+    <div class="foot">
+      <button id="dzPrev" class="quiet" ${dz.offset ? "" : "disabled"}>上一页</button>
+      <span class="muted">${dz.total ? `第 ${num(dz.offset + 1)}–${num(Math.min(dz.offset + DZ_PAGE, dz.total))} 个` : ""}</span>
+      <button id="dzNext" class="quiet" ${dz.offset + DZ_PAGE < dz.total ? "" : "disabled"}>下一页</button>
+      <span style="flex:1"></span>
+      <span class="muted">${dz.note || (dz.picked.size ? `已选 ${num(dz.picked.size)} 个设计` : "勾选要找的设计，或直接导出筛选出的全部")}</span>
+      <button id="dzOut" ${dz.picked.size ? "" : "disabled"}>导出选中的文件清单</button>
+      <button id="dzOutAll" class="quiet" ${dz.total ? "" : "disabled"}>导出筛选出的全部（${num(dz.total)} 个）</button>
+    </div></div>`;
+}
+
+function drawDesigns() {
+  if (view !== "designs") return;
+  $("#main").innerHTML = designsHtml();
+  const again = () => { dz.offset = 0; loadDesigns(); };
+  document.querySelectorAll(".dz [data-f]").forEach(el => el.onchange = () => { dz[el.dataset.f] = el.value.trim(); again(); });
+  document.querySelectorAll(".dz th.sort").forEach(h => h.onclick = () => {
+    if (dz.sort === h.dataset.s) dz.dir = dz.dir === "desc" ? "asc" : "desc"; else { dz.sort = h.dataset.s; dz.dir = "desc"; }
+    again(); });
+  document.querySelectorAll(".dz tr.row").forEach(tr => tr.onclick = e => {
+    if (e.target.closest("input")) return;
+    if (tr.dataset.job) showDetail(tr.dataset.job); });
+  document.querySelectorAll(".dz td input[type=checkbox]").forEach(c => c.onchange = () => {
+    const r = dz.rows.find(x => String(x.id) === c.dataset.id);
+    if (c.checked) dz.picked.set(r.id, r); else dz.picked.delete(r.id);
+    dz.note = ""; drawDesigns(); });
+  $("#dzAll").onchange = e => { for (const r of dz.rows) { if (e.target.checked) dz.picked.set(r.id, r); else dz.picked.delete(r.id); } dz.note = ""; drawDesigns(); };
+  $("#dzPrev").onclick = () => { dz.offset = Math.max(0, dz.offset - DZ_PAGE); loadDesigns(); };
+  $("#dzNext").onclick = () => { dz.offset += DZ_PAGE; loadDesigns(); };
+  $("#dzOut").onclick = () => exportDesigns(false);
+  $("#dzOutAll").onclick = () => exportDesigns(true);
+}
+
+let dzAsked = 0;
+async function loadDesigns() {
+  const mine = ++dzAsked;
+  dz.busy = true; drawDesigns();
+  try {
+    const res = await api.designs({ ...dzAsk(), limit: DZ_PAGE, offset: dz.offset });
+    if (mine !== dzAsked) return;  // a newer question is on its way
+    dz.rows = pinThumbs(res.items); dz.total = res.total;
+  } catch (e) { if (mine === dzAsked) toast(e.message); }
+  if (mine !== dzAsked) return;
+  dz.busy = false; drawDesigns();
+}
+
+// The file list as a spreadsheet: one line per file, with where it is on the NAS.
+async function exportDesigns(everything) {
+  let rows = [];
+  try {
+    if (everything) {
+      for (let at = 0; at < dz.total && at < 20000; at += 500) {
+        dz.note = `正在准备清单… ${num(at)} / ${num(dz.total)}`; drawDesigns();
+        rows = rows.concat((await api.designs({ ...dzAsk(), limit: 500, offset: at, files: true })).items);
+      }
+    } else {
+      // the picked designs, wherever in the table they were picked: ask for each one's files
+      const ids = [...dz.picked.keys()];
+      for (let i = 0; i < ids.length; i += 200) {
+        dz.note = `正在准备清单… ${num(i)} / ${num(ids.length)}`; drawDesigns();
+        rows = rows.concat((await api.designs({ ids: ids.slice(i, i + 200), files: true, limit: 200, sort: "orders" })).items);
+      }
+    }
+  } catch (e) { dz.note = ""; drawDesigns(); return toast(e.message); }
+  const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const head = ["设计编号", "订单数", "名称", "结论", "谁定的", "Sonnet", "本地模型", "客户", "日期", "第几个文件", "文件路径"];
+  const lines = [head.map(cell).join(",")];
+  let files = 0;
+  for (const r of rows) (r.files || []).forEach((f, i) => { files++; lines.push([r.id, r.orders,
+    r.labels.split("; ").filter(Boolean).map(nameOf).join("、"), VERDICT[r.verdict] || r.verdict, BY[r.source] || r.source,
+    r.sonnet ? SAID[r.sonnet] : "", r.local ? LOCAL[r.local] : "", r.customers.join("、"), r.days.join("、"), i + 1, f].map(cell).join(",")); });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv" }));
+  a.download = `LogoGuard-设计文件清单-${todayMmdd()}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  dz.note = `已导出 ${num(rows.length)} 个设计、${num(files)} 个文件`; drawDesigns();
+}
+
 function setView(v) {
   view = v;
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
   $("#q").hidden = v !== "review"; $("#stats").hidden = v !== "review"; $("#reviewer").hidden = v === "dash";
   clearTimeout(pollTimer);
   if (v === "dash") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshDashboard(); }
+  else if (v === "designs") loadDesigns();
   else if (v === "machines") { mView = null; $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshMachinesPage(); }
   else if (v === "upload") refreshUploads(); else load();
 }
