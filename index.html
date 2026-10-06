@@ -152,6 +152,19 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .hero-actions .field { display:inline-flex; align-items:center; gap:8px; font-size:14px; color:var(--muted); }
 .hero-notes { display:grid; gap:2px; font-size:13px; color:var(--muted); }
 
+/* labelling inside the record sheet */
+.label { margin-top:14px; padding:14px; border:1px solid var(--line); border-radius:12px; background:var(--bg); display:grid; gap:10px; }
+.label .lq { font-size:15px; font-weight:600; }
+.label .lq b { color:var(--blue); }
+.lbtns { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+.lbtns button { font:inherit; font-size:15px; font-weight:600; padding:11px 6px; border-radius:10px; cursor:pointer;
+                background:var(--card); color:var(--fg); border:2px solid var(--line); }
+.lbtns .yes { color:var(--red); border-color:var(--red); } .lbtns .no { color:var(--green); border-color:var(--green); }
+.lbtns .yes:hover { background:var(--red-bg); } .lbtns .no:hover { background:var(--green-bg); }
+.lbtns button:disabled { opacity:.5; cursor:default; }
+.label input { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); width:100%; }
+.label .muted { font-size:12px; }
+
 /* finished images: an even wall of cards, verdict readable from across the room */
 .rechead { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; margin:0 0 12px; }
 .rechead h2 { margin:0; font-size:16px; color:var(--fg); }
@@ -341,6 +354,9 @@ const api = REMOTE ? {
   fleet(go, reviewer) { return this.call({ action: "fleet", go, reviewer_label: reviewer }); },
   jobs(verdict, before) { return this.call({ action: "jobs", verdict, before, limit: 48 }); },
   detail(id) { return this.call({ action: "detail", id: Number(id) }); },
+  decideJob(id, decision, ip, reviewer) {
+    return this.call({ action: "decide_job", job_id: Number(id), decision, ip, reviewer_label: reviewer });
+  },
   async ips() { return REMOTE.ips || []; },
 } : {
   async queue(m) { return (await (await fetch(`/review/items?mode=${m}&limit=60`)).json()).map(fromLocal); },
@@ -692,7 +708,7 @@ function recCard(x) {
   const names = (x.labels || "").split("; ").filter(Boolean).map(nameOf).join("、");
   return `<div class="dcard ${esc(x.verdict)}" data-job="${x.id}" title="${esc(names)}">
     ${x.thumb_url ? `<img src="${esc(x.thumb_url)}" loading="lazy" alt="">` : `<div class="noimg">无缩略图</div>`}
-    <span class="badge ${esc(x.verdict)}">${VERDICT[x.verdict] || ""}</span>${x.cached ? `<span class="rep">重复</span>` : ""}
+    <span class="badge ${esc(x.verdict)}">${VERDICT[x.verdict] || ""}</span>${x.human ? `<span class="rep">已标注</span>` : x.cached ? `<span class="rep">重复</span>` : ""}
     <div class="cap"><div class="what ${names ? "" : "none"}">${esc(names) || (x.verdict === "pass" ? "没有发现问题" : "")}</div>
       <div class="when">${hhmm(x.finished_at)}</div></div></div>`;
 }
@@ -775,18 +791,78 @@ function detailHtml(d) {
       <tr><th>文件夹</th><td>${esc(j.folder || "")}</td></tr>
       <tr><th>检测时间</th><td>${new Date(j.finished_at).toLocaleString("zh-CN", { hour12: false })}，机器 ${esc(j.machine || "")}${j.cached ? "，重复设计没有上 GPU" : `，用时 ${Number(j.seconds || 0).toFixed(1)} 秒`}</td></tr>
       ${d.design ? `<tr><th>所属设计</th><td>#${d.design.id}，共 ${num(d.orders)} 单，当前结论：${VERDICT[d.design.verdict]}（${esc(SOURCE[d.design.source] || d.design.source)}）</td></tr>` : ""}
-      </table></div></div>
+      </table>
+      <div class="label">
+        <div class="lq">${d.decision ? `已标注：<b>${DECIDED[d.decision.decision] || ""}</b>${d.decision.ip ? "（" + esc(nameOf(d.decision.ip)) + "）" : ""}${d.decision.reviewer_label ? " · " + esc(d.decision.reviewer_label) : ""} · 可以改` : "你的判断：这张图有没有用别人的 IP？"}</div>
+        <div class="lbtns">
+          <button class="yes" data-d="infringing">是，侵权<kbd>1</kbd></button>
+          <button class="no" data-d="false_positive">没问题<kbd>2</kbd></button>
+          <button data-d="unsure">不确定<kbd>3</kbd></button>
+        </div>
+        <input id="sheetIp" list="iplist" placeholder="侵权的是哪个 IP（选“是”时填，可以直接写名字）" value="${esc(suggestIp(d))}">
+        <div class="muted">标完自动看下一张 · ← → 换图 · Esc 关闭。标注对这个设计的所有订单生效，以后再出现直接沿用。</div>
+      </div></div></div>
     <h4>判断过程</h4>${body}</div>`;
+}
+
+const DECIDED = { infringing: "侵权", false_positive: "没问题", unsure: "不确定" };
+// What to offer as the IP: the earlier human answer, else what the machines named.
+function suggestIp(d) {
+  if (d.decision && d.decision.ip) return nameOf(d.decision.ip);
+  const first = (d.job.labels || "").split("; ").filter(Boolean)[0] || "";
+  return first.startsWith("known:") ? "" : nameOf(first);
+}
+
+let sheetJob = null;  // the record the sheet is showing
+
+function closeSheet() { $("#sheet").classList.remove("show"); sheetJob = null; loadRecords.redraw(); }
+
+// The neighbour of the open record in the list on screen (dir: +1 older, -1 newer).
+function sheetStep(dir) {
+  const i = recs.findIndex(r => String(r.id) === String(sheetJob));
+  const next = i < 0 ? null : recs[i + dir];
+  if (next) showDetail(next.id); else if (dir > 0) { toast("这一页看完了"); closeSheet(); }
+}
+
+async function sheetDecide(decision) {
+  const id = sheetJob, text = ($("#sheetIp") || {}).value || "";
+  if (!id) return;
+  const ip = decision === "infringing" && text.trim() ? (ipByName[text.trim().toLowerCase()] || text.trim()) : null;
+  $("#sheet").querySelectorAll(".lbtns button").forEach(b => { b.disabled = true; });
+  let res;
+  try { res = await api.decideJob(id, decision, ip, $("#reviewer").value.trim() || null); }
+  catch (e) { alert("保存失败：" + e.message); $("#sheet").querySelectorAll(".lbtns button").forEach(b => { b.disabled = false; }); return; }
+  toast("已记录：" + DECIDED[decision]);
+  const rec = recs.find(r => String(r.id) === String(id));
+  if (rec && res.verdict) {  // the card shows the human answer from now on
+    rec.verdict = res.verdict;
+    if (ip) rec.labels = ip;
+    rec.human = decision;
+  }
+  sheetStep(1);
 }
 
 async function showDetail(id) {
   const sheet = $("#sheet");
+  sheetJob = id;
   sheet.innerHTML = `<div class="box"><div class="empty">加载中…</div></div>`;
   sheet.classList.add("show");
-  try { sheet.innerHTML = detailHtml(await api.detail(id)); }
+  try { const d = await api.detail(id); if (sheetJob !== id) return; sheet.innerHTML = detailHtml(d); }
   catch (e) { sheet.innerHTML = `<div class="box"><button class="x" id="sheetX">×</button><div class="empty">加载失败：${esc(e.message)}</div></div>`; }
-  const x = $("#sheetX"); if (x) x.onclick = () => sheet.classList.remove("show");
+  const x = $("#sheetX"); if (x) x.onclick = closeSheet;
+  sheet.querySelectorAll(".lbtns button").forEach(b => { b.onclick = () => sheetDecide(b.dataset.d); });
+  sheet.scrollTop = 0;
 }
+
+document.addEventListener("keydown", e => {
+  if (!sheetJob || !$("#sheet").classList.contains("show")) return;
+  if (e.key === "Escape") { closeSheet(); return; }
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  const d = { "1": "infringing", "2": "false_positive", "3": "unsure" }[e.key];
+  if (d) { e.preventDefault(); sheetDecide(d); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); sheetStep(1); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); sheetStep(-1); }
+});
 
 let active = false, scanDay = "", lastSeen = "", lastTyped = 0, dashFailed = 0;
 const TYPING_GRACE_MS = 6000;
