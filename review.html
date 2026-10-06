@@ -286,6 +286,7 @@ const api = REMOTE ? {
   dashboard() { return this.call({ action: "dashboard", days: 14 }); },
   scan(day, reviewer) { return this.call({ action: "scan", day, reviewer_label: reviewer }); },
   pause(paused, reviewer) { return this.call({ action: "pause", paused, reviewer_label: reviewer }); },
+  fleet(go, reviewer) { return this.call({ action: "fleet", go, reviewer_label: reviewer }); },
   jobs(verdict, before) { return this.call({ action: "jobs", verdict, before, limit: 48 }); },
   detail(id) { return this.call({ action: "detail", id: Number(id) }); },
   async ips() { return REMOTE.ips || []; },
@@ -559,6 +560,14 @@ function dashboardHtml(d) {
     <div><span class="pill ${esc(x.verdict)}">${{ block: "拦截", review: "待确认", pass: "放行" }[x.verdict] || ""}</span>${x.cached ? ` <span class="muted">重复</span>` : ""}
     <div>${esc((x.labels || "").split("; ").slice(0, 2).map(l => ips[l]?.name || l).join("、"))}</div>
     <div class="muted">${new Date(x.finished_at).toLocaleTimeString("zh-CN", { hour12: false })}</div></div></div>`;
+  // The shop's own machines work only on a night the owner said go; the host always does.
+  const hosts = (d.control && d.control.hosts) || [];
+  const fleetUntil = d.control && d.control.fleet_until ? new Date(d.control.fleet_until) : null;
+  const fleetOn = !!(fleetUntil && fleetUntil > new Date());
+  const others = (d.machines || []).filter(m => !hosts.includes(m.machine)).length;
+  const fleetText = fleetOn
+    ? `其它机器：已放行到 ${fleetUntil.toLocaleString("zh-CN", { hour12: false, month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}（它们自己只在 22:00–03:00 之间工作），到点自动停`
+    : `其它机器：没有放行，只有检测主机在工作` + (others ? `（已装好 ${others} 台，等你发话）` : `（还没有装好的机器）`);
   active = !!((waiting && !paused) || busy || scanning);
   return `<div class="dash">
     <div class="panel status">${state}<span class="muted">本页数字读取于 ${now}，${active ? "检测进行中，每 5 秒" : "每分钟"}自动重读一次（只是重新读数）</span></div>
@@ -566,7 +575,9 @@ function dashboardHtml(d) {
       <div class="go"><b>开始检测</b> 日期文件夹 <input id="scanDay" value="${esc(scanDay || todayMmdd())}" maxlength="4" inputmode="numeric" aria-label="日期，4 位数字">
         <button id="scanGo" ${scanning ? "disabled" : ""}>开始检测这一天的图</button>
         <button id="pauseGo" class="${paused ? "" : "quiet"}" data-paused="${paused ? 1 : 0}">${paused ? "继续检测" : "暂停检测"}</button>
+        <button id="fleetGo" class="quiet" data-go="${fleetOn ? 1 : 0}">${fleetOn ? "让其它机器停下" : "今晚让全部机器一起检测"}</button>
         <span class="muted">${scanText}</span></div>
+      <div class="go" style="margin-top:8px"><span class="muted">${fleetText}</span></div>
       <div class="prog"><i style="width:${t.files ? 100 * done / t.files : 0}%"></i></div>
       <div class="go"><b>${mmdd(t.day)}：已检测 ${num(done)} / ${num(t.files)} 张（${pct(done, t.files)}）</b>
         <span class="muted">${waiting ? `最近 10 分钟检测了 ${num(per10)} 张，${eta}` : "队列里没有待检测的图"}</span>
@@ -749,6 +760,15 @@ async function refreshDashboard() {
       if (stop && !confirm("暂停检测？检测机器会把手头已经拿到的图做完（每台最多 32 张），然后停下。排队的图不会丢，点「继续检测」就接着做。")) return;
       pz.disabled = true;
       try { await api.pause(stop, $("#reviewer").value.trim()); toast(stop ? "已暂停" : "已继续"); }
+      catch (e) { toast(e.message); }
+      refreshDashboard();
+    };
+    const fl = $("#fleetGo");
+    if (fl) fl.onclick = async () => {
+      const start = fl.dataset.go !== "1";
+      if (start && !confirm("今晚让车间的全部机器一起检测？它们会在 22:00 到凌晨 3:00 之间工作，3:00 自动停，明晚不会自己再开始。")) return;
+      fl.disabled = true;
+      try { await api.fleet(start, $("#reviewer").value.trim()); toast(start ? "已放行到凌晨 3:00" : "其它机器会把手头的做完后停下"); }
       catch (e) { toast(e.message); }
       refreshDashboard();
     };
