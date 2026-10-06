@@ -119,6 +119,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .go button { font:inherit; font-weight:600; padding:7px 16px; border-radius:8px; border:0; cursor:pointer;
              background:var(--blue); color:#fff; }
 .go button:disabled { opacity:.5; cursor:default; }
+.go button.quiet { background:var(--card); color:var(--fg); border:1px solid var(--line); }
 .prog { height:14px; border-radius:7px; background:var(--line); overflow:hidden; margin:10px 0 6px; }
 .prog i { display:block; height:100%; background:var(--blue); transition:width .6s; }
 .feed { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; }
@@ -284,6 +285,7 @@ const api = REMOTE ? {
   stats() { return this.call({ action: "stats" }); },
   dashboard() { return this.call({ action: "dashboard", days: 14 }); },
   scan(day, reviewer) { return this.call({ action: "scan", day, reviewer_label: reviewer }); },
+  pause(paused, reviewer) { return this.call({ action: "pause", paused, reviewer_label: reviewer }); },
   jobs(verdict, before) { return this.call({ action: "jobs", verdict, before, limit: 48 }); },
   detail(id) { return this.call({ action: "detail", id: Number(id) }); },
   async ips() { return REMOTE.ips || []; },
@@ -536,7 +538,10 @@ function dashboardHtml(d) {
   // What the GPU machines are doing right now. The page only reads numbers; it starts no work.
   const waiting = days.reduce((s, x) => s + Number(x.waiting || 0), 0);
   const busy = (d.machines || []).filter(m => m.gpu && Date.now() - new Date(m.last_seen) < 180000).length;
-  const state = waiting || busy
+  const paused = !!(d.control && d.control.paused);
+  const state = paused
+    ? `<span class="pill block">已暂停</span> 不再给检测机器派新图` + (busy ? `，${busy} 台机器正在把手头的做完` : "") + `；还有 ${num(waiting)} 张在排队，点"继续检测"恢复`
+    : waiting || busy
     ? `<span class="pill review">检测进行中</span> ` + (busy ? `${busy} 台机器在工作，` : `检测机器正在启动，`) + `还有 ${num(waiting)} 张在排队`
     : `<span class="pill idle">空闲</span> 没有待检测的图，检测机器在待命`;
   const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
@@ -554,12 +559,13 @@ function dashboardHtml(d) {
     <div><span class="pill ${esc(x.verdict)}">${{ block: "拦截", review: "待确认", pass: "放行" }[x.verdict] || ""}</span>${x.cached ? ` <span class="muted">重复</span>` : ""}
     <div>${esc((x.labels || "").split("; ").slice(0, 2).map(l => ips[l]?.name || l).join("、"))}</div>
     <div class="muted">${new Date(x.finished_at).toLocaleTimeString("zh-CN", { hour12: false })}</div></div></div>`;
-  active = !!(waiting || busy || scanning);
+  active = !!((waiting && !paused) || busy || scanning);
   return `<div class="dash">
     <div class="panel status">${state}<span class="muted">本页数字读取于 ${now}，${active ? "检测进行中，每 5 秒" : "每分钟"}自动重读一次（只是重新读数）</span></div>
     <div class="panel">
       <div class="go"><b>开始检测</b> 日期文件夹 <input id="scanDay" value="${esc(scanDay || todayMmdd())}" maxlength="4" inputmode="numeric" aria-label="日期，4 位数字">
         <button id="scanGo" ${scanning ? "disabled" : ""}>开始检测这一天的图</button>
+        <button id="pauseGo" class="${paused ? "" : "quiet"}" data-paused="${paused ? 1 : 0}">${paused ? "继续检测" : "暂停检测"}</button>
         <span class="muted">${scanText}</span></div>
       <div class="prog"><i style="width:${t.files ? 100 * done / t.files : 0}%"></i></div>
       <div class="go"><b>${mmdd(t.day)}：已检测 ${num(done)} / ${num(t.files)} 张（${pct(done, t.files)}）</b>
@@ -716,6 +722,15 @@ async function refreshDashboard() {
     const stamp = newest ? newest.id + "" : "";
     if (stamp !== lastSeen && recs.length <= 48 && !$("#sheet").classList.contains("show")) { lastSeen = stamp; await loadRecords(false); }
     else loadRecords.redraw();
+    const pz = $("#pauseGo");
+    if (pz) pz.onclick = async () => {
+      const stop = pz.dataset.paused !== "1";
+      if (stop && !confirm("暂停检测？检测机器会把手头已经拿到的图做完（每台最多 32 张），然后停下。排队的图不会丢，点"继续检测"就接着做。")) return;
+      pz.disabled = true;
+      try { await api.pause(stop, $("#reviewer").value.trim()); toast(stop ? "已暂停" : "已继续"); }
+      catch (e) { toast(e.message); }
+      refreshDashboard();
+    };
     const go = $("#scanGo"), day = $("#scanDay");
     if (day) day.oninput = () => { scanDay = day.value.trim(); };
     if (go) go.onclick = async () => {
