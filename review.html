@@ -245,6 +245,11 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .sheet .step { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-top:8px; }
 .sheet .step b.n { display:inline-block; width:22px; height:22px; line-height:22px; text-align:center; border-radius:50%;
                    background:var(--blue-bg); color:var(--blue); font-size:13px; margin-right:6px; }
+.mbtns { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px; font-size:13px; }
+.mbtns button, #updateAll { font:inherit; font-size:13px; padding:4px 10px; border-radius:8px; cursor:pointer; border:1px solid var(--line);
+                            background:var(--blue); color:#fff; }
+.mbtns button.quiet, #updateAll { background:var(--card); color:var(--fg); }
+.mbtns button:disabled { opacity:.45; cursor:default; }
 .sn { display:block; font-size:12px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sn.ip { color:var(--red); } .sn.no { color:var(--green); } .sn.un { color:var(--amber); }
 .snbox { margin-top:10px; padding:10px 12px; border-radius:10px; background:var(--blue-bg); font-size:14px; }
@@ -417,6 +422,8 @@ const api = REMOTE ? {
   askClaudeImage(imageId, reviewer) { return this.call({ action: "ask_claude", image_id: imageId, reviewer_label: reviewer }); },
   detail(id) { return this.call({ action: "detail", id: Number(id) }); },
   machines() { return this.call({ action: "machines" }); },
+  machinePause(machine, paused) { return this.call({ action: "machine_pause", machine, paused }); },
+  command(machine, what, reviewer) { return this.call({ action: "command", machine, do: what, reviewer_label: reviewer }); },
   askClaude(id, reviewer) { return this.call({ action: "ask_claude", job_id: Number(id), reviewer_label: reviewer }); },
   detailOfDesign(id) { return this.call({ action: "detail", design: Number(id) }); },
   decideJob(id, decision, ip, reviewer) {
@@ -771,12 +778,42 @@ function dashboardHtml(d) {
       <div class="panel"><h2>出现最多的 IP（按图片数）</h2><table><tr><th>名称</th><th>图片数</th></tr>
         ${(d.top_names || []).map(x => `<tr><td>${esc(ips[x.name]?.name || x.name)}</td><td>${num(x.files)}</td></tr>`).join("")}</table></div>
     </div>
-    <div class="panel"><h2>检测机器：配置、速度和现在的状态</h2><div id="machines">${machinesHtml()}</div></div>
+    <div class="panel"><h2>检测机器：配置、速度和现在的状态 <span class="muted" id="machinesHead" style="font-weight:400"></span></h2><div id="machines">${machinesHtml()}</div></div>
     </div>`;
 }
 
 // ---- detection machines: what each one is, how fast it works, how loaded it is ---------------
-let machinesData = null, machinesAt = 0;
+let machinesData = null, machinesAt = 0, machinesMeta = { latest: null, hosts: [] };
+const DO = { status: "查询状态", stop: "停止并释放显卡", start: "启动检测程序", restart: "重启检测程序", update: "更新到最新版" };
+// Live line of a machine card, from MachineChannel's agent (every 10 s, whether LogoGuard runs or not).
+function channelLine(m) {
+  const c = m.channel;
+  if (!c) return `<span class="muted">通道还没装到这台机器上，暂时只能看到检测程序自己上报的状态，也发不了指令</span>`;
+  const on = Date.now() - new Date(c.seen_at) < 60000, i = c.info || {};
+  if (!on) return `<span class="pill block">通道连不上</span> <span class="muted">${ago(c.seen_at)}还在 · 机器可能关了</span>`;
+  return `<span class="pill idle">在线</span> CPU <b>${Math.round(i.cpu ?? 0)}%</b>`
+    + (i.gpu != null ? ` · 显卡 <b>${Math.round(i.gpu)}%</b> · 显存 <b>${(i.vram_mb / 1024).toFixed(1)}</b> / ${(i.vram_total_mb / 1024).toFixed(0)} GB · ${Math.round(i.temp)}°C` : "")
+    + ((i.running || []).includes("logoguard") ? ` · <b>正在执行指令</b>` : "");
+}
+function commandLine(m) {
+  const c = m.command;
+  if (!c) return "";
+  const what = DO[c.do] || c.do, when = ago(c.created_at);
+  let said = "";
+  try { const r = JSON.parse(c.reply); said = r.ok === false ? r.error : r.worker ? `检测程序${r.worker === "running" ? "在运行" : "已停止"}` + (r.busy ? `，机器正在${r.busy === "rip" ? "排版" : "打印"}` : "") : r.updated ? "已更新" : ""; }
+  catch (e) { said = (c.reply || "").slice(-120); }
+  const state = { queued: "已发出，等机器接收", delivered: "机器正在执行", done: "完成", error: "没有成功", expired: "机器没有接收，已作废" }[c.status] || c.status;
+  return `<div class="mrow"><span class="k">上一条指令</span><span>${esc(what)} · ${when} · <b>${esc(state)}</b>${said ? `<span class="muted"> · ${esc(said)}</span>` : ""}</span></div>`;
+}
+function machineButtons(m) {
+  const host = (machinesMeta.hosts || []).includes(m.machine);
+  const reach = m.channel && Date.now() - new Date(m.channel.seen_at) < 60000 && ((m.channel.info || {}).apps || []).includes("logoguard");
+  const b = (cls, attr, label, on = true) => `<button class="${cls}" ${attr} data-m="${esc(m.machine)}" ${on ? "" : "disabled"}>${label}</button>`;
+  return `<div class="mbtns">
+    ${m.paused ? b("", `data-pause="0"`, "恢复派活") : b("quiet", `data-pause="1"`, "暂停这台")}
+    ${host ? "" : b("quiet", `data-do="stop"`, "停止并释放显卡", reach) + b("quiet", `data-do="start"`, "启动", reach) + b("quiet", `data-do="status"`, "查询状态", reach)}
+    ${m.paused ? `<span class="muted">已暂停：不再给它派新图，手头的做完就停</span>` : ""}</div>`;
+}
 const gb = mb => (Number(mb) / 1024).toFixed(1);
 const hwLine = hw => !hw ? "" : [hw.cpu ? `${hw.cpu}${hw.cores ? `（${hw.cores} 核 ${hw.threads || ""} 线程）` : ""}` : "",
   hw.ram_gb ? `内存 ${hw.ram_gb} GB` : "", hw.gpu ? `${hw.gpu}${hw.vram_mb ? ` ${gb(hw.vram_mb)} GB` : ""}` : "",
@@ -808,19 +845,61 @@ function machinesHtml() {
       ${spark(m.history, "gpu", "g")}${spark(m.history, "per_10min", "v")}</svg>
       <div class="muted sparkkey"><i class="g"></i>GPU 占用 <i class="v"></i>检测速度 · 最近一小时</div>` : "";
     return `<div class="mcard">
-      <div class="mtop"><span class="dot ${working ? "live" : online ? "" : "paused"}"></span><b>${esc(m.machine)}</b>
+      <div class="mtop"><span class="dot ${m.paused ? "paused" : working ? "live" : online ? "" : "paused"}"></span><b>${esc(m.machine)}</b>
         <span class="muted">${working ? "正在检测" : online ? (s.loaded ? "在线，等任务" : "在线，模型未加载") : "离线"} · ${ago(m.last_seen)}上报</span>
         <span class="muted" style="margin-left:auto">这次启动后检测 ${num(m.done)} 张</span></div>
       ${m.hw ? `<div class="mrow"><span class="k">配置</span><span>${esc(hwLine(m.hw))}</span></div>` : `<div class="mrow"><span class="k">配置</span><span class="muted">这台机器的程序还没更新，没有上报配置</span></div>`}
       <div class="mrow"><span class="k">速度</span><span>${speed}</span></div>
       ${m.status ? `<div class="mrow"><span class="k">状态</span><span>${esc(stateLine(s, m.hw)) || `<span class="muted">没有读到</span>`}</span></div>` : ""}
-      ${chart}</div>`; }).join("") + `</div>`;
+      <div class="mrow"><span class="k">现在</span><span>${channelLine(m)}</span></div>
+      ${commandLine(m)}
+      ${chart}${REMOTE ? machineButtons(m) : ""}</div>`; }).join("") + `</div>`;
+}
+// Buttons on the machine cards: pausing is decided in the cloud; the rest are LogoGuard commands
+// that travel to the machine through MachineChannel.
+function wireMachines() {
+  const box = $("#machines"); if (!box) return;
+  const who = () => $("#reviewer").value.trim() || null;
+  const again = () => { machinesAt = 0; refreshMachines(); };
+  box.querySelectorAll("button[data-pause]").forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { await api.machinePause(b.dataset.m, b.dataset.pause === "1"); toast(b.dataset.pause === "1" ? `${b.dataset.m} 已暂停` : `${b.dataset.m} 已恢复`); }
+    catch (e) { toast(e.message); }
+    again();
+  });
+  box.querySelectorAll("button[data-do]").forEach(b => b.onclick = async () => {
+    const what = b.dataset.do, m = b.dataset.m;
+    if (what === "stop" && !confirm(`停止 ${m} 上的检测程序？它会立刻结束并把显卡让出来，手头没做完的图会回到队列。之后要点"启动"它才会再工作。`)) return;
+    b.disabled = true;
+    try { await api.command(m, what, who()); toast(`已通过通道发给 ${m}：${DO[what]}`); }
+    catch (e) { toast(e.message); }
+    setTimeout(again, 4000);
+  });
+  const all = $("#updateAll");
+  if (all) all.onclick = async () => {
+    if (!confirm("把通道连得上的所有机器更新到最新发布的版本？每台会先停下检测，装好后原来在跑的会自己接着跑。")) return;
+    all.disabled = true;
+    try { const r = await api.command("*", "update", who()); toast(`已发给 ${r.sent.length} 台机器`); }
+    catch (e) { toast(e.message); }
+    setTimeout(again, 4000);
+  };
 }
 async function refreshMachines() {
-  if (Date.now() - machinesAt < 30000) return;
+  if (Date.now() - machinesAt < 10000) return;   // the channel's agents report every 10 s
   machinesAt = Date.now();
-  try { machinesData = (await api.machines()).machines; } catch (e) { return; }
+  try { const r = await api.machines(); machinesData = r.machines; machinesMeta = { latest: r.latest, hosts: r.hosts || [] }; } catch (e) { return; }
   const box = $("#machines"); if (box) box.innerHTML = machinesHtml();
+  machinesHead();
+}
+// The panel's headline and the buttons' handlers; also after the numbers above were redrawn,
+// which rebuilds the panel from what is already known.
+function machinesHead() {
+  const head = $("#machinesHead");
+  if (head && machinesData) {
+    const on = machinesData.filter(m => m.channel && Date.now() - new Date(m.channel.seen_at) < 60000).length;
+    head.innerHTML = `通道连着 <b>${on}</b> / ${machinesData.length} 台` + (REMOTE && on ? ` <button class="quiet small" id="updateAll">全部更新到最新版</button>` : "");
+  }
+  wireMachines();
 }
 const ago = s => { const m = Math.round((Date.now() - new Date(s)) / 60000);
   return m < 2 ? "刚刚" : m < 90 ? m + " 分钟前" : m < 2880 ? Math.round(m / 60) + " 小时前" : Math.round(m / 1440) + " 天前"; };
@@ -1099,6 +1178,7 @@ async function refreshDashboard() {
     // are lifted out and put back, so nothing flickers or reloads under the reader's eyes.
     const kept = $("#records");
     $("#main").innerHTML = dashboardHtml(data);
+    machinesHead();   // the machine panel was rebuilt with the rest: its buttons need their handlers again
     if (kept && kept.childElementCount) $("#records").replaceWith(kept);
     // Ask for the list only when the newest finished image changed (the numbers already say which).
     const stamp = (data.recent && data.recent[0] ? data.recent[0].id : "") + "";
