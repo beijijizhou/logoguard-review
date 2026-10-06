@@ -153,6 +153,20 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .hero-actions .field { display:inline-flex; align-items:center; gap:8px; font-size:14px; color:var(--muted); }
 .hero-notes { display:grid; gap:2px; font-size:13px; color:var(--muted); }
 
+/* detection machines */
+.mgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(420px,1fr)); gap:12px; }
+.mcard { border:1px solid var(--line); border-radius:12px; padding:12px 14px; display:grid; gap:6px; font-size:14px; }
+.mtop { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; }
+.mtop b { font-size:15px; }
+.mrow { display:grid; grid-template-columns:3em 1fr; gap:8px; overflow-wrap:anywhere; }
+.mrow .k { color:var(--muted); }
+.mrow b { font-variant-numeric:tabular-nums; }
+.spark { width:100%; height:36px; margin-top:4px; background:var(--bg); border-radius:6px; }
+.spark .g { stroke:var(--blue); } .spark .v { stroke:var(--green); }
+.sparkkey { font-size:12px; } .sparkkey i { display:inline-block; width:12px; height:2px; vertical-align:middle; margin:0 4px 0 8px; }
+.sparkkey i.g { background:var(--blue); } .sparkkey i.v { background:var(--green); }
+@media (max-width:820px) { .mgrid { grid-template-columns:1fr; } }
+
 /* review priority */
 .prios { display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:13px; }
 .prios button { font:inherit; font-size:13px; padding:4px 11px; border-radius:14px; border:1px solid var(--line);
@@ -402,6 +416,7 @@ const api = REMOTE ? {
   jobs(verdict, before, offset) { return this.call({ action: "jobs", verdict, before, offset, limit: 48 }); },
   askClaudeImage(imageId, reviewer) { return this.call({ action: "ask_claude", image_id: imageId, reviewer_label: reviewer }); },
   detail(id) { return this.call({ action: "detail", id: Number(id) }); },
+  machines() { return this.call({ action: "machines" }); },
   askClaude(id, reviewer) { return this.call({ action: "ask_claude", job_id: Number(id), reviewer_label: reviewer }); },
   detailOfDesign(id) { return this.call({ action: "detail", design: Number(id) }); },
   decideJob(id, decision, ip, reviewer) {
@@ -668,8 +683,6 @@ function dashboardHtml(d) {
   const card = x => `<div class="dcard" data-design="${x.id}" title="点开查看并标注">${x.thumb_url ? `<img src="${esc(x.thumb_url)}" loading="lazy" alt="">` : `<div class="noimg">无缩略图</div>`}
     <div><span class="pill ${esc(x.verdict)}">${x.verdict === "block" ? "拦截" : "待确认"}</span> <b>${num(x.orders)} 单</b>
     <div class="muted">${esc(SOURCE[x.source] || x.source)}</div>${esc((x.labels || "").split("; ").slice(0, 3).map(l => ips[l]?.name || l).join("、"))}</div></div>`;
-  const ago = s => { const m = Math.round((Date.now() - new Date(s)) / 60000);
-    return m < 2 ? "刚刚" : m < 90 ? m + " 分钟前" : m < 2880 ? Math.round(m / 60) + " 小时前" : Math.round(m / 1440) + " 天前"; };
   // What the GPU machines are doing right now. The page only reads numbers; it starts no work.
   const waiting = days.reduce((s, x) => s + Number(x.waiting || 0), 0);
   const busy = (d.machines || []).filter(m => m.gpu && Date.now() - new Date(m.last_seen) < 180000).length;
@@ -757,10 +770,60 @@ function dashboardHtml(d) {
     <div class="two">
       <div class="panel"><h2>出现最多的 IP（按图片数）</h2><table><tr><th>名称</th><th>图片数</th></tr>
         ${(d.top_names || []).map(x => `<tr><td>${esc(ips[x.name]?.name || x.name)}</td><td>${num(x.files)}</td></tr>`).join("")}</table></div>
-      <div class="panel"><h2>检测机器</h2><table><tr><th>机器</th><th>显卡</th><th>已检测</th><th>最近在线</th></tr>
-        ${(d.machines || []).map(m => `<tr><td>${esc(m.machine)}</td><td>${esc(m.gpu || "空闲")}</td><td>${num(m.done)}</td><td>${ago(m.last_seen)}</td></tr>`).join("")}</table></div>
-    </div></div>`;
+    </div>
+    <div class="panel"><h2>检测机器：配置、速度和现在的状态</h2><div id="machines">${machinesHtml()}</div></div>
+    </div>`;
 }
+
+// ---- detection machines: what each one is, how fast it works, how loaded it is ---------------
+let machinesData = null, machinesAt = 0;
+const gb = mb => (Number(mb) / 1024).toFixed(1);
+const hwLine = hw => !hw ? "" : [hw.cpu ? `${hw.cpu}${hw.cores ? `（${hw.cores} 核 ${hw.threads || ""} 线程）` : ""}` : "",
+  hw.ram_gb ? `内存 ${hw.ram_gb} GB` : "", hw.gpu ? `${hw.gpu}${hw.vram_mb ? ` ${gb(hw.vram_mb)} GB` : ""}` : "",
+  hw.driver ? `驱动 ${hw.driver}` : "", hw.os || ""].filter(Boolean).join(" · ");
+function stateLine(s, hw) {
+  if (!s) return "";
+  const p = v => v == null ? null : Math.round(v) + "%";
+  return [s.cpu != null ? `CPU ${p(s.cpu)}` : "", s.ram != null ? `内存 ${p(s.ram)}` : "", s.gpu != null ? `GPU ${p(s.gpu)}` : "",
+    s.vram_used_mb != null ? `显存 ${gb(s.vram_used_mb)}${hw && hw.vram_mb ? " / " + gb(hw.vram_mb) : ""} GB` : "",
+    s.temp != null ? `${Math.round(s.temp)}°C` : "", s.power_w != null ? `${Math.round(s.power_w)} W` : ""].filter(Boolean).join(" · ");
+}
+// one line per value over the last hour, each scaled to its own peak
+function spark(hist, key, cls) {
+  const pts = hist.filter(h => h[key] != null);
+  if (pts.length < 2) return "";
+  const max = Math.max(...pts.map(h => h[key]), key === "per_10min" ? 1 : 100), w = 220, h = 36;
+  const xy = pts.map((p, i) => `${(i / (pts.length - 1) * w).toFixed(1)},${(h - 2 - p[key] / max * (h - 4)).toFixed(1)}`).join(" ");
+  return `<polyline class="${cls}" points="${xy}" fill="none" stroke-width="1.6"/>`;
+}
+function machinesHtml() {
+  if (!machinesData) return `<span class="muted">读取中…</span>`;
+  if (!machinesData.length) return `<span class="muted">还没有机器上报</span>`;
+  return `<div class="mgrid">` + machinesData.map(m => {
+    const s = m.status || {}, online = Date.now() - new Date(m.last_seen) < 180000;
+    const working = online && s.loaded && s.per_10min > 0;
+    const speed = s.per_10min ? `最近 10 分钟 <b>${num(s.per_10min)}</b> 张` + (s.sec_image ? ` · 平均 <b>${s.sec_image}</b> 秒一张` : "")
+      + (s.sec_gpu != null ? `<span class="muted">（其中检测本身 ${s.sec_gpu} 秒，其余是读图和等待）</span>` : "") : `最近 10 分钟没有检测`;
+    const chart = (m.history || []).length > 1 ? `<svg class="spark" viewBox="0 0 220 36" preserveAspectRatio="none" role="img" aria-label="最近一小时的 GPU 占用和检测速度">
+      ${spark(m.history, "gpu", "g")}${spark(m.history, "per_10min", "v")}</svg>
+      <div class="muted sparkkey"><i class="g"></i>GPU 占用 <i class="v"></i>检测速度 · 最近一小时</div>` : "";
+    return `<div class="mcard">
+      <div class="mtop"><span class="dot ${working ? "live" : online ? "" : "paused"}"></span><b>${esc(m.machine)}</b>
+        <span class="muted">${working ? "正在检测" : online ? (s.loaded ? "在线，等任务" : "在线，模型未加载") : "离线"} · ${ago(m.last_seen)}上报</span>
+        <span class="muted" style="margin-left:auto">这次启动后检测 ${num(m.done)} 张</span></div>
+      ${m.hw ? `<div class="mrow"><span class="k">配置</span><span>${esc(hwLine(m.hw))}</span></div>` : `<div class="mrow"><span class="k">配置</span><span class="muted">这台机器的程序还没更新，没有上报配置</span></div>`}
+      <div class="mrow"><span class="k">速度</span><span>${speed}</span></div>
+      ${m.status ? `<div class="mrow"><span class="k">状态</span><span>${esc(stateLine(s, m.hw)) || `<span class="muted">没有读到</span>`}</span></div>` : ""}
+      ${chart}</div>`; }).join("") + `</div>`;
+}
+async function refreshMachines() {
+  if (Date.now() - machinesAt < 30000) return;
+  machinesAt = Date.now();
+  try { machinesData = (await api.machines()).machines; } catch (e) { return; }
+  const box = $("#machines"); if (box) box.innerHTML = machinesHtml();
+}
+const ago = s => { const m = Math.round((Date.now() - new Date(s)) / 60000);
+  return m < 2 ? "刚刚" : m < 90 ? m + " 分钟前" : m < 2880 ? Math.round(m / 60) + " 小时前" : Math.round(m / 1440) + " 天前"; };
 
 // ---- every finished image, and how each one was judged ------------------------------------
 const VERDICT = { block: "拦截", review: "待确认", pass: "放行" };
@@ -893,6 +956,8 @@ function detailHtml(d) {
     <div><h3><span class="pill ${esc(j.verdict)}">${VERDICT[j.verdict] || ""}</span> ${esc((j.labels || "").split("; ").filter(Boolean).map(nameOf).join("、") || "没有发现问题")}</h3>
       <table><tr><th>文件</th><td class="raw">${esc(j.file_name || "")}</td></tr>
       <tr><th>文件夹</th><td>${esc(j.folder || "")}</td></tr>
+      ${d.machine_state ? `<tr><th>当时这台机器</th><td>${esc(stateLine(d.machine_state, d.machine_hw))}${d.machine_state.per_10min != null ? ` · 那 10 分钟检测了 ${num(d.machine_state.per_10min)} 张` : ""}
+        <span class="muted">（${hhmm(d.machine_state.at)} 的采样${d.machine_hw && d.machine_hw.gpu ? "，" + esc(d.machine_hw.gpu) : ""}）</span></td></tr>` : ""}
       <tr><th>检测时间</th><td>${new Date(j.finished_at).toLocaleString("zh-CN", { hour12: false })}，机器 ${esc(j.machine || "")}${j.cached ? "，重复设计没有上 GPU" : `，用时 ${Number(j.seconds || 0).toFixed(1)} 秒`}</td></tr>
       ${d.design ? `<tr><th>所属设计</th><td>#${d.design.id}，共 ${num(d.orders)} 单，当前结论：${VERDICT[d.design.verdict]}（${esc(SOURCE[d.design.source] || d.design.source)}）</td></tr>` : ""}
       </table>
@@ -1029,6 +1094,7 @@ async function refreshDashboard() {
       return;
     }
     pinThumbs(data.top_designs); pinThumbs(data.recent);
+    refreshMachines();
     // The numbers are redrawn every time, the record list is not: its cards (and their pictures)
     // are lifted out and put back, so nothing flickers or reloads under the reader's eyes.
     const kept = $("#records");
