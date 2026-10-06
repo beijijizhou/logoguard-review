@@ -152,6 +152,19 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .hero-actions .field { display:inline-flex; align-items:center; gap:8px; font-size:14px; color:var(--muted); }
 .hero-notes { display:grid; gap:2px; font-size:13px; color:var(--muted); }
 
+/* review priority */
+.prios { display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:13px; }
+.prios button { font:inherit; font-size:13px; padding:4px 11px; border-radius:14px; border:1px solid var(--line);
+                background:var(--card); color:var(--fg); cursor:pointer; }
+.prios button b { font-variant-numeric:tabular-nums; margin-left:2px; }
+.prios button.on { background:var(--fg); color:var(--bg); border-color:var(--fg); }
+.prios button:disabled { opacity:.45; cursor:default; }
+.empty .prios { justify-content:center; margin-bottom:22px; }
+.prio { display:inline-block; font-size:13px; font-weight:600; padding:4px 10px; border-radius:6px; margin-left:8px; }
+.prio.p1 { color:var(--red); background:var(--red-bg); } .prio.p2 { color:var(--amber); background:var(--amber-bg); }
+.prio.p3 { color:var(--blue); background:var(--blue-bg); }
+.prio.p4, .prio.p5 { color:var(--muted); background:var(--bg); border:1px solid var(--line); }
+
 /* labelling inside the record sheet */
 .label { margin-top:14px; padding:14px; border:1px solid var(--line); border-radius:12px; background:var(--bg); display:grid; gap:10px; }
 .label .lq { font-size:15px; font-weight:600; }
@@ -325,11 +338,22 @@ function fromLocal(it) {
 }
 function fromRemote(it) {
   return { key: it.image_id, imgId: String(it.image_id).slice(0, 8), thumb: it.thumb_url, full: it.thumb_url,
+           priority: it.priority || 0,
            verdict: it.ai_verdict, orders: it.orders,
            suspects: (it.suspects || []).map(s => ({ name: s.name, listed: s.listed, tag: s.tag, ipId: s.ip_id, why: s.why,
              info: [s.kind, s.owner && s.owner !== s.name ? "属于 " + s.owner : ""].filter(Boolean).join(" · ") })),
            place: { order: it.order_no || "", folder: it.folder || "", file: it.file_name || "" },
            path: null, seen: (it.vlm_items || []).map(i => i.name).join("、"), hits: "", reviewed: it.reviewed || null };
+}
+
+// Review priority, set by the machine that flagged the image: what to look at first.
+const PRIO = { 1: "机器已拦截", 2: "Claude 确认是 IP", 3: "命中名单 / 像已下架图", 4: "Claude 拿不准", 5: "只有小模型认出" };
+let prioFilter = 0, prioCounts = null;  // 0 = every level
+function prioBar() {
+  if (!prioCounts) return "";
+  const total = Object.values(prioCounts).reduce((a, b) => a + b, 0);
+  const chip = (n, label, count) => `<button data-p="${n}" class="${prioFilter === n ? "on" : ""}" ${count ? "" : "disabled"}>${label} <b>${count}</b></button>`;
+  return `<div class="prios"><span class="muted">待复查，按优先级：</span>${chip(0, "全部", total)}${[1, 2, 3, 4, 5].map(n => chip(n, `${n} 级`, prioCounts[n] || 0)).join("")}</div>`;
 }
 
 const REMOTE = window.LG_REMOTE || null;  // set in the static page built by remote_page()
@@ -342,7 +366,11 @@ const api = REMOTE ? {
     if (!r.ok) throw new Error(j.error || r.status);
     return j;
   },
-  async queue() { return (await this.call({ action: "queue", limit: 60 })).items.map(fromRemote); },
+  async queue() {
+    const r = await this.call({ action: "queue", limit: 60, priority: prioFilter });
+    prioCounts = r.levels || null;
+    return r.items.map(fromRemote);
+  },
   async find(q) { return (await this.call({ action: "find", q })).items.map(fromRemote); },
   async decide(it, decision, ip, reviewer) {
     await this.call({ action: "decide", image_id: it.key, decision, ip, reviewer_label: reviewer });
@@ -382,10 +410,11 @@ function render() {
   if (view !== "review") return;
   const main = $("#main");
   if (idx >= items.length) {
-    main.innerHTML = `<div class="empty">${mode === "search" ? (items.length ? "搜索结果看完了。" : "没找到这张图。") :
+    main.innerHTML = `<div class="empty">${mode === "search" ? "" : prioBar()}${mode === "search" ? (items.length ? "搜索结果看完了。" : "没找到这张图。") :
       items.length ? "这一批看完了。" : (mode === "pass" ? "没有可抽查的图。" : "没有待复查的图。")}
       <br><br><button id="more">再加载一批</button></div>`;
     $("#more").onclick = load;
+    main.querySelectorAll(".prios button").forEach(b => { b.onclick = () => { prioFilter = Number(b.dataset.p); load(); }; });
     return;
   }
   const it = items[idx], sus = it.suspects;
@@ -417,9 +446,10 @@ function render() {
       </div>
     </div>
     <div class="panel">
+      ${mode === "search" ? "" : prioBar()}
       <div class="progress">${mode === "search" ? "搜索结果 " : ""}第 ${idx + 1} / ${items.length} 张${it.orders > 1 ? ` · 这个设计出现在 ${it.orders} 个订单里` : ""}${reviewed ? `<span class="reviewed">已复查：${reviewed}</span>` : ""}</div>
       <div class="box">
-        <span class="verdict ${verdict[0]}">${verdict[1]}</span>
+        <span class="verdict ${verdict[0]}">${verdict[1]}</span>${it.priority ? `<span class="prio p${it.priority}">优先级 ${it.priority} · ${PRIO[it.priority]}</span>` : ""}
         <h2>${mode === "pass" ? "AI 的判断" : "AI 怀疑这张图用了："}</h2>
         ${susHtml}
       </div>
@@ -440,6 +470,7 @@ function render() {
         ${it.path ? `<br>完整路径：${esc(it.path)}` : ""}
       </div></details>
     </div>`;
+  main.querySelectorAll(".prios button").forEach(b => { b.onclick = () => { prioFilter = Number(b.dataset.p); load(); }; });
   $("#img").onclick = () => it.full && window.open(it.full, "_blank");
   $("#img").onerror = () => refreshLinks(it.key);
   $("#cpid").onclick = () => copy(it.imgId, "图片编号");
