@@ -572,7 +572,7 @@ function dashboardHtml(d) {
         <span class="muted">${waiting ? `最近 10 分钟检测了 ${num(per10)} 张，${eta}` : "队列里没有待检测的图"}</span>
         <span class="muted">今天 Claude 已花 $${Number(d.claude_today || 0).toFixed(2)} / 上限 $10</span></div>
     </div>
-    <div class="panel"><h2>检测记录（最新的在前）</h2><div id="records">${recordsHtml()}</div></div>
+    <div class="panel"><h2>检测记录（最新的在前）<span class="muted" style="font-weight:400;font-size:13px;margin-left:10px">${active ? "检测进行中，新结果每 5 秒自动出现在最前面" : "现在没有在检测，有新结果时会自动出现"} · 上次读取 ${now}</span></h2><div id="records">${recordsHtml()}</div></div>
     <div><h2>最近一天（${mmdd(t.day)}）</h2><div class="tiles">
       ${tile("", num(t.files), "检查的图", t.waiting ? `还有 ${num(t.waiting)} 张在排队` : "全部检完")}
       ${tile("red", num(t.block), "直接拦截", pct(t.block, t.done) + " · 确定侵权")}
@@ -604,7 +604,7 @@ function dashboardHtml(d) {
 const VERDICT = { block: "拦截", review: "待确认", pass: "放行" };
 const LAYER = { ocr: "文字识别", owl: "图案检测", gallery: "图库比对", vlm: "本地小模型", claude: "Claude 复核" };
 const ISIP = { yes: "是 IP", no: "不是 IP", unsure: "拿不准" };
-let recs = [], recFilter = "", recBusy = false;
+let recs = [], recFilter = "", recBusy = false, recExtended = false;  // extended: "再看 48 张" was used
 const hhmm = s => new Date(s).toLocaleTimeString("zh-CN", { hour12: false });
 const nameOf = l => ips[l]?.name || l;
 
@@ -630,6 +630,7 @@ async function loadRecords(more) {
     const before = more && recs.length ? recs[recs.length - 1].finished_at : "";
     const got = (await api.jobs(recFilter, before)).items;
     recs = more ? recs.concat(got) : got;
+    recExtended = !!more;
   } catch (e) { toast(e.message); }
   recBusy = false;
   const box = $("#records");
@@ -706,33 +707,53 @@ async function showDetail(id) {
   const x = $("#sheetX"); if (x) x.onclick = () => sheet.classList.remove("show");
 }
 
-let active = false, scanDay = "", lastSeen = "";
+let active = false, scanDay = "", lastSeen = "", lastTyped = 0, dashFailed = 0;
+const TYPING_GRACE_MS = 6000;
 const todayMmdd = () => { const n = new Date(); return String(n.getMonth() + 1).padStart(2, "0") + String(n.getDate()).padStart(2, "0"); };
 
 async function refreshDashboard() {
   if (view !== "dash") return;
   clearTimeout(pollTimer);
-  const typing = document.activeElement && document.activeElement.id === "scanDay";
-  if (!typing) {  // do not redraw under someone typing the date
-    try { $("#main").innerHTML = dashboardHtml(await api.dashboard()); }
-    catch (e) { $("#main").innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; return; }
+  // Do not redraw under someone typing the date - but only while they are typing: a caret left
+  // in the box must not freeze the page.
+  const typing = document.activeElement && document.activeElement.id === "scanDay"
+    && Date.now() - lastTyped < TYPING_GRACE_MS;
+  if (!typing) {
+    let data = null;
+    try { data = await api.dashboard(); dashFailed = 0; }
+    catch (e) {
+      // One failed read must not stop the page for good: keep what is shown, say so, try again.
+      dashFailed++;
+      if (!$("#records")) $("#main").innerHTML = `<div class="empty">加载失败：${esc(e.message)}，正在重试…</div>`;
+      else toast("读取失败，稍后自动重试：" + e.message);
+      pollTimer = setTimeout(refreshDashboard, Math.min(60000, 5000 * dashFailed));
+      return;
+    }
+    $("#main").innerHTML = dashboardHtml(data);
     // The numbers above are redrawn every time; the record list only when something new finished
     // (or it was never loaded), so it does not jump under the reader's eyes.
-    const newest = (await api.jobs("", "").catch(() => ({ items: [] }))).items[0];
-    const stamp = newest ? newest.id + "" : "";
-    if (stamp !== lastSeen && recs.length <= 48 && !$("#sheet").classList.contains("show")) { lastSeen = stamp; await loadRecords(false); }
-    else loadRecords.redraw();
+    const fresh = (await api.jobs(recFilter, "").catch(() => ({ items: [] }))).items;
+    const stamp = fresh.length ? fresh[0].id + "" : "";
+    if (stamp !== lastSeen && !$("#sheet").classList.contains("show")) {
+      lastSeen = stamp;
+      // Put only the new ones in front and keep the cards already shown as they are: their image
+      // links stay the same, so the browser does not download 48 thumbnails again every 5 seconds.
+      const have = new Set(recs.map(r => r.id));
+      recs = fresh.filter(r => !have.has(r.id)).concat(recs);
+      if (!recExtended) recs = recs.slice(0, 48);
+    }
+    loadRecords.redraw();
     const pz = $("#pauseGo");
     if (pz) pz.onclick = async () => {
       const stop = pz.dataset.paused !== "1";
-      if (stop && !confirm("暂停检测？检测机器会把手头已经拿到的图做完（每台最多 32 张），然后停下。排队的图不会丢，点"继续检测"就接着做。")) return;
+      if (stop && !confirm("暂停检测？检测机器会把手头已经拿到的图做完（每台最多 32 张），然后停下。排队的图不会丢，点「继续检测」就接着做。")) return;
       pz.disabled = true;
       try { await api.pause(stop, $("#reviewer").value.trim()); toast(stop ? "已暂停" : "已继续"); }
       catch (e) { toast(e.message); }
       refreshDashboard();
     };
     const go = $("#scanGo"), day = $("#scanDay");
-    if (day) day.oninput = () => { scanDay = day.value.trim(); };
+    if (day) day.oninput = () => { scanDay = day.value.trim(); lastTyped = Date.now(); };
     if (go) go.onclick = async () => {
       const v = day.value.trim();
       if (!/^\d{4}$/.test(v)) { toast("日期要写成 4 位数字，例如 1005"); return; }
