@@ -231,6 +231,9 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .sheet .step { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-top:8px; }
 .sheet .step b.n { display:inline-block; width:22px; height:22px; line-height:22px; text-align:center; border-radius:50%;
                    background:var(--blue-bg); color:var(--blue); font-size:13px; margin-right:6px; }
+.sheet .askbtn { font:inherit; font-weight:600; margin-top:8px; padding:7px 14px; border-radius:8px; cursor:pointer;
+                 background:var(--blue); color:#fff; border:0; }
+.sheet .askbtn:disabled { opacity:.6; cursor:default; }
 .sheet .raw { font:13px ui-monospace,Consolas,monospace; color:var(--muted); overflow-wrap:anywhere; }
 @media (max-width:820px) { .sheet .top { grid-template-columns:1fr; } }
 .pill.block { background:var(--red-bg); color:var(--red); } .pill.review { background:var(--amber-bg); color:var(--amber); }
@@ -390,6 +393,7 @@ const api = REMOTE ? {
   fleet(go, reviewer) { return this.call({ action: "fleet", go, reviewer_label: reviewer }); },
   jobs(verdict, before) { return this.call({ action: "jobs", verdict, before, limit: 48 }); },
   detail(id) { return this.call({ action: "detail", id: Number(id) }); },
+  askClaude(id, reviewer) { return this.call({ action: "ask_claude", job_id: Number(id), reviewer_label: reviewer }); },
   detailOfDesign(id) { return this.call({ action: "detail", design: Number(id) }); },
   decideJob(id, decision, ip, reviewer) {
     return this.call({ action: "decide_job", job_id: Number(id), decision, ip, reviewer_label: reviewer });
@@ -836,8 +840,11 @@ function detailHtml(d) {
         <span class="muted">（用了 ${num((cl.usage || {}).in)} + ${num((cl.usage || {}).out)} token）</span></div>
         ${(cl.candidates || []).length ? `<table><tr><th>名字</th><th>判断</th><th>权利人</th><th>理由</th></tr>${cl.candidates.map(c =>
           `<tr><td>${esc(c.name)}</td><td>${ISIP[c.is_ip] || esc(c.is_ip)}</td><td>${esc(c.owner)}</td><td>${esc(c.reason)}</td></tr>`).join("")}</table>` : ""}
-        ${(cl.other_ip || []).length ? `<div>Claude 另外认出：${cl.other_ip.map(o => esc(o.name) + (o.owner ? `（${esc(o.owner)}）` : "")).join("、")}</div>` : ""}`
-      : `<div class="muted">没有发给 Claude。只有"仅因名单外的名字而待确认"的图才会发；已拦截的、命中名单的、完全没问题的都不发。</div>`);
+        ${(cl.other_ip || []).length ? `<div>Claude 另外认出：${cl.other_ip.map(o => esc(o.name) + (o.owner ? `（${esc(o.owner)}）` : "")).join("、")}</div>` : ""}
+        ${cl.asked_by ? `<div class="muted">这是在复查页面上手动问的（${esc(cl.asked_by)}），只供参考，没有改动结论。</div>` : ""}
+        <div><button class="askbtn" id="askClaude">再让 Sonnet 看一次</button></div>`
+      : `<div class="muted">没有发给 Claude。只有"仅因名单外的名字而待确认"的图才会自动发；已拦截的、命中名单的、完全没问题的都不发。</div>
+         <div><button class="askbtn" id="askClaude">让 Sonnet 看一下</button> <span class="muted">约 $0.005 一次，计入每天 $10 的额度；它的回答只供你参考，结论还是由你点"侵权 / 放行"。</span></div>`);
   }
   return `<div class="box"><button class="x" id="sheetX" aria-label="关闭">×</button>
     <div class="top"><div>${d.thumb_url ? `<img src="${esc(d.thumb_url)}" alt="">` : `<div class="dcard"><div class="noimg">无缩略图</div></div>`}</div>
@@ -916,6 +923,19 @@ async function quickDecide(button) {
 }
 
 // id: a record (job); with ofDesign, a design from "订单最多的设计" - its latest file is shown.
+// "让 Sonnet 看一下": the reviewer asks Claude about the image in the sheet. Advice for the
+// person labelling; it costs about half a cent and counts against the day's budget.
+async function askClaude(button) {
+  const id = sheetJob;
+  if (!id) return;
+  button.disabled = true; button.textContent = "Sonnet 正在看…（几秒钟）";
+  try {
+    const r = await api.askClaude(id, $("#reviewer").value.trim() || null);
+    toast(`Sonnet 已回答 · 这次 $${Number(r.usd).toFixed(4)} · 今天共 $${Number(r.spent).toFixed(2)} / $${r.limit}`);
+    if (sheetJob === id) showDetail(id);  // the sheet now shows the answer in step 4
+  } catch (e) { alert("没有问成：" + e.message); button.disabled = false; button.textContent = "让 Sonnet 看一下"; }
+}
+
 async function showDetail(id, ofDesign) {
   const sheet = $("#sheet");
   sheetJob = id;
@@ -930,6 +950,7 @@ async function showDetail(id, ofDesign) {
   catch (e) { sheet.innerHTML = `<div class="box"><button class="x" id="sheetX">×</button><div class="empty">加载失败：${esc(e.message)}</div></div>`; }
   const x = $("#sheetX"); if (x) x.onclick = closeSheet;
   sheet.querySelectorAll(".lbtns button").forEach(b => { b.onclick = () => sheetDecide(b.dataset.d); });
+  const ask = $("#askClaude"); if (ask) ask.onclick = () => askClaude(ask);
   sheet.scrollTop = 0;
 }
 
