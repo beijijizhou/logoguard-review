@@ -713,7 +713,7 @@ function dashboardHtml(d) {
   const fleetOn = !!(fleetUntil && fleetUntil > new Date());
   const others = (d.machines || []).filter(m => !hosts.includes(m.machine)).length;
   const fleetText = fleetOn
-    ? `其它机器：已放行到 ${fleetUntil.toLocaleString("zh-CN", { hour12: false, month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}（它们自己只在 22:00–03:00 之间工作），到点自动停`
+    ? `其它机器：已放行到 ${fleetUntil.toLocaleString("zh-CN", { hour12: false, month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}，到点自动停；白天夜里都可以，机器在打印或生成 PRN 时会自己让路`
     : `其它机器：没有放行，只有检测主机在工作` + (others ? `（已装好 ${others} 台，等你发话）` : `（还没有装好的机器）`);
   active = !!((waiting && !paused) || busy || scanning);
   const stateName = paused ? "已暂停" : waiting || busy ? "检测进行中" : "空闲";
@@ -743,7 +743,7 @@ function dashboardHtml(d) {
         <label class="field">日期文件夹 <input id="scanDay" value="${esc(scanDay || todayMmdd())}" maxlength="4" inputmode="numeric" aria-label="日期，4 位数字"></label>
         <button id="scanGo" ${scanning ? "disabled" : ""}>开始检测这一天的图</button>
         <button id="pauseGo" class="${paused ? "" : "quiet"}" data-paused="${paused ? 1 : 0}">${paused ? "继续检测" : "暂停检测"}</button>
-        <button id="fleetGo" class="quiet" data-go="${fleetOn ? 1 : 0}">${fleetOn ? "让其它机器停下" : "今晚让全部机器一起检测"}</button>
+        <button id="fleetGo" class="quiet" data-go="${fleetOn ? 1 : 0}">${fleetOn ? "让其它机器停下" : "让全部机器一起检测"}</button>
       </div>
       <div class="hero-notes">${scanText ? `<span>${scanText}</span>` : ""}<span>${fleetText}</span></div>
     </div>
@@ -1126,7 +1126,7 @@ async function refreshDashboard() {
     const fl = $("#fleetGo");
     if (fl) fl.onclick = async () => {
       const start = fl.dataset.go !== "1";
-      if (start && !confirm("今晚让车间的全部机器一起检测？它们会在 22:00 到凌晨 3:00 之间工作，3:00 自动停，明晚不会自己再开始。")) return;
+      if (start && !confirm("让车间的全部机器一起检测？白天夜里都会工作，机器在打印或生成 PRN 时自己让路；到下一个凌晨 3:00 自动停，之后要再点一次才会开始。随时可以点“让其它机器停下”。")) return;
       fl.disabled = true;
       try { await api.fleet(start, $("#reviewer").value.trim()); toast(start ? "已放行到凌晨 3:00" : "其它机器会把手头的做完后停下"); }
       catch (e) { toast(e.message); }
