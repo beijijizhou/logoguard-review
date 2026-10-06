@@ -207,6 +207,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .held span { padding:2px 9px; border-radius:8px; background:var(--bg); border:1px solid var(--line); max-width:260px;
              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .mfeed .dcard.err .noimg { color:var(--red); }
+.cachebar .g { background:var(--blue); } .cachebar .s { background:var(--green); } .cachebar .e { background:var(--amber); }
 @media (max-width:820px) { .mhead b.nm { font-size:19px; } .hlabels span:nth-child(odd) { visibility:hidden; } }
 
 /* review priority */
@@ -352,6 +353,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
     <button data-view="dash">数据总览</button>
     <button data-view="designs" class="sub">设计</button>
     <button data-view="machines" class="sub">机器</button>
+    <button data-view="cache" class="sub">查重缓存</button>
   </nav>
   <main id="main"><div class="empty">加载中…</div></main>
 </div>
@@ -486,6 +488,7 @@ const api = REMOTE ? {
   jobs(verdict, before, offset, level) { return this.call({ action: "jobs", verdict, before, offset, level, limit: 48 }); },
   askClaudeImage(imageId, reviewer) { return this.call({ action: "ask_claude", image_id: imageId, reviewer_label: reviewer }); },
   detail(id) { return this.call({ action: "detail", id: Number(id) }); },
+  cache() { return this.call({ action: "cache", days: 14 }); },
   machines(since) { return this.call({ action: "machines", since }); },
   machine(machine, since, hours) { return this.call({ action: "machine", machine, since, hours }); },
   machinePause(machine, paused) { return this.call({ action: "machine_pause", machine, paused }); },
@@ -1483,9 +1486,9 @@ async function refreshDashboard() {
 }
 // A tab nobody is looking at does not keep asking; it catches up when it is looked at again.
 document.addEventListener("visibilitychange", () => {
-  if (view !== "dash" && view !== "machines") return;
+  if (view !== "dash" && view !== "machines" && view !== "cache") return;
   clearTimeout(pollTimer);
-  if (!document.hidden) (view === "dash" ? refreshDashboard : refreshMachinesPage)();
+  if (!document.hidden) (view === "dash" ? refreshDashboard : view === "cache" ? refreshCache : refreshMachinesPage)();
 });
 
 // ---- 设计: every design on a row, to sort, filter, and export with its files' paths -----------
@@ -1647,6 +1650,91 @@ async function exportDesigns(everything) {
   dz.note = `已导出 ${num(rows.length)} 个设计、${num(files)} 个文件`; drawDesigns();
 }
 
+// ---- the cache page: what was answered without the GPU, and every reuse as it happened --------
+let cacheFailed = 0;
+function cacheHtml(d) {
+  const days = d.days || [], L = d.ledger || {}, t = days[0];
+  if (!t) return `<div class="empty">还没有检测记录</div>`;
+  const tile = (cls, value, label, note) => `<div class="tile ${cls}"><b>${value}</b><span>${label}</span>${note ? `<small>${note}</small>` : ""}</div>`;
+  const all = k => days.reduce((s, x) => s + Number(x[k] || 0), 0);
+  const reused = x => Number(x.similar || 0) + Number(x.exact || 0);
+  const saved = x => reused(x) * Number(x.sec || 0) / 3600;   // hours the GPU did not have to work
+  const totalSaved = days.reduce((s, x) => s + saved(x), 0), totalGpu = days.reduce((s, x) => s + Number(x.gpu_hours || 0), 0);
+  const w = (x, k) => 100 * Number(x[k] || 0) / (x.done || 1);
+  const row = x => `<tr><td>${mmdd(x.day)}</td><td>${num(x.done)}</td><td>${num(x.analysed)}</td>
+    <td><b>${num(x.similar)}</b> <span class="muted">${pct(x.similar, x.done)}</span></td>
+    <td>${num(x.exact)} <span class="muted">${pct(x.exact, x.done)}</span></td>
+    <td>${x.sec ?? "–"} 秒</td><td>${Number(x.gpu_hours || 0).toFixed(1)} 小时</td><td><b>${saved(x).toFixed(1)} 小时</b></td>
+    <td><div class="bar cachebar" title="上显卡 ${x.analysed} · 相似设计沿用 ${x.similar} · 同一文件沿用 ${x.exact}"><i class="g" style="width:${w(x, "analysed")}%"></i><i class="s" style="width:${w(x, "similar")}%"></i><i class="e" style="width:${w(x, "exact")}%"></i></div></td></tr>`;
+  // how often a design comes back
+  const sp = d.spread || [], spTop = Math.max(1, ...sp.map(s => Number(s.files)));
+  const designs = sp.reduce((s, x) => s + Number(x.designs), 0), files = sp.reduce((s, x) => s + Number(x.files), 0);
+  const spRow = s => `<tr><td>${s.bucket >= 10 ? "10 次以上" : s.bucket + " 次"}</td><td>${num(s.designs)}</td><td>${num(s.files)}</td>
+    <td>${s.bucket > 1 ? num(s.files - s.designs) : "–"}</td>
+    <td><div class="bar"><i style="width:${100 * s.files / spTop}%;background:var(--blue)"></i></div></td></tr>`;
+  const rel = d.relied || {}, relAll = Object.values(rel).reduce((s, n) => s + Number(n), 0);
+  const relRow = k => rel[k] ? `<tr><td>${SOURCE[k] || k}</td><td>${num(rel[k])}</td><td>${pct(rel[k], relAll)}</td></tr>` : "";
+  const mRow = m => `<tr><td>${esc(m.machine || "")}</td><td>${num(m.analysed)}</td><td>${num(m.reused)}</td><td>${pct(m.reused, Number(m.reused) + Number(m.analysed))}</td></tr>`;
+  const ev = x => `<div class="dcard ${esc(x.verdict)}" ${x.kind === "similar" ? `data-job="${x.id}"` : ""} title="${esc((x.folder || "") + " / " + (x.file_name || ""))}">
+    ${x.thumb_url ? `<img src="${esc(x.thumb_url)}" loading="lazy" alt="">` : `<div class="noimg">无缩略图</div>`}
+    <span class="badge ${esc(x.verdict)}">沿用：${VERDICT[x.verdict] || ""}</span>
+    <div class="cap"><div class="what">${x.kind === "similar" ? `认出是设计 #${x.design}` : "同一个文件，之前检过"}</div>
+      <div class="when">${x.kind === "similar" ? `依据：${SOURCE[x.source] || x.source || ""} · 这个设计 ${ago(x.first_at)}首次出现` : "按文件内容完全相同命中"}</div>
+      <div class="when">${hhmm(x.finished_at)} · ${esc(x.machine || "")} · 没上显卡</div></div></div>`;
+  const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  return `<div class="dash">
+    <div class="panel hero">
+      <div class="mhead"><b class="nm">查重缓存</b><span class="muted">见过的设计不再上显卡，直接沿用上一次的结论</span>
+        <span class="muted" style="margin-left:auto">读取于 ${now} · 每 10 秒自动更新</span></div>
+      <div class="mrow"><span class="k">相似设计</span><span>每张图先算一个“画面指纹”（去掉订单标签，只看图案本身），在设计总账里找相近的。找到并且那个设计已有结论，就直接沿用；尺码、颜色、订单号不同的同一图案都算同一个设计。</span></div>
+      <div class="mrow"><span class="k">同一文件</span><span>文件内容一模一样（同一个文件被再次登记），按文件校验值命中，同样不上显卡。</span></div>
+      <div class="mrow"><span class="k">不沿用</span><span>机器和 Claude 的结论只在规则没变时沿用，规则一改就重新检测；人工判定和 Temu 下架的结论一直有效。</span></div>
+    </div>
+    <div><h2>${mmdd(t.day)} 这一天</h2><div class="tiles">
+      ${tile("", num(t.done), "检完的图")}
+      ${tile("blue", num(t.analysed), "上显卡检测", pct(t.analysed, t.done))}
+      ${tile("green", num(t.similar), "相似设计沿用", pct(t.similar, t.done) + " · 画面指纹命中")}
+      ${tile("amber", num(t.exact), "同一文件沿用", pct(t.exact, t.done))}
+      ${tile("green", saved(t).toFixed(1) + `<span style="font-size:15px"> 小时</span>`, "省下的显卡时间（估算）", `实际用了 ${Number(t.gpu_hours || 0).toFixed(1)} 小时 · 按当天平均 ${t.sec ?? "–"} 秒一张算`)}
+      ${tile("", num(L.total), "设计总账里的设计", `最近 24 小时新增 ${num(L.today)}`)}
+    </div></div>
+    <div class="panel"><h2>每天：上显卡的和直接沿用的</h2>
+      <table><tr><th>日期</th><th>检完</th><th>上显卡</th><th>相似设计沿用</th><th>同一文件沿用</th><th>上显卡平均每张</th><th>显卡实际用时</th><th>省下（估算）</th><th>构成</th></tr>${days.map(row).join("")}</table>
+      <div class="hkey"><i></i>上显卡检测<i style="background:var(--green)"></i>相似设计沿用<i style="background:var(--amber)"></i>同一文件沿用 · 合计 ${num(all("done"))} 张里 ${num(all("similar") + all("exact"))} 张没上显卡，省下约 ${totalSaved.toFixed(1)} 小时，实际用了 ${totalGpu.toFixed(1)} 小时</div></div>
+    <div class="two">
+      <div class="panel"><h2>同一个设计出现几次</h2>
+        <table><tr><th>出现次数</th><th>设计数</th><th>对应的图</th><th>其中沿用的</th><th></th></tr>${sp.map(spRow).join("")}</table>
+        <div class="hkey">${num(files)} 张图其实只有 ${num(designs)} 个不同设计</div></div>
+      <div><div class="panel"><h2>沿用的是谁的结论</h2>
+        <table><tr><th>来源</th><th>沿用次数</th><th>占比</th></tr>${["takedown", "human", "claude", "machine"].map(relRow).join("") || `<tr><td class="muted">暂无</td></tr>`}</table></div>
+        <div class="panel" style="margin-top:18px"><h2>最近 24 小时，每台机器</h2>
+        <table><tr><th>机器</th><th>上显卡</th><th>沿用</th><th>沿用占比</th></tr>${(d.by_machine || []).map(mRow).join("")}</table></div></div>
+    </div>
+    <div class="panel"><div class="mhead"><h2 style="margin:0">最近 ${(d.recent || []).length} 次沿用，逐条</h2><span class="muted">图是被认出的那个设计第一次出现时的样子 · 点一张看那个设计当初是怎么判断的</span></div>
+      <div class="feed mfeed" id="cacheRecent" data-key="${esc((d.recent || []).map(r => r.id).join(","))}">${(d.recent || []).map(ev).join("") || `<span class="muted">还没有沿用过</span>`}</div></div>
+    </div>`;
+}
+async function refreshCache() {
+  if (view !== "cache" || document.hidden) return;
+  clearTimeout(pollTimer);
+  try {
+    const d = await api.cache(); pinThumbs(d.recent); cacheFailed = 0;
+    if (view !== "cache") return;
+    // the pictures are lifted out and put back when nothing new was reused, so they do not blink
+    const kept = $("#cacheRecent");
+    $("#main").innerHTML = cacheHtml(d);
+    const fresh = $("#cacheRecent");
+    if (kept && fresh && kept.dataset.key === fresh.dataset.key) fresh.replaceWith(kept);
+    $("#main").querySelectorAll("#cacheRecent .dcard[data-job]").forEach(c => c.onclick = () => showDetail(c.dataset.job));
+  } catch (e) {
+    cacheFailed++;
+    if (view !== "cache") return;
+    if ($("#main .dash")) toast("读取失败，稍后自动重试：" + e.message);
+    else $("#main").innerHTML = `<div class="empty">加载失败：${esc(e.message)}，正在重试…</div>`;
+  }
+  pollTimer = setTimeout(refreshCache, cacheFailed ? Math.min(60000, 5000 * cacheFailed) : 10000);
+}
+
 function setView(v) {
   view = v;
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
@@ -1654,6 +1742,7 @@ function setView(v) {
   clearTimeout(pollTimer);
   if (v === "dash") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshDashboard(); }
   else if (v === "designs") { loadDesigns(); watchCollect(); }
+  else if (v === "cache") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshCache(); }
   else if (v === "machines") { mView = null; $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshMachinesPage(); }
   else if (v === "upload") refreshUploads(); else load();
 }
