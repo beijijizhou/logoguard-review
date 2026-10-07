@@ -1333,7 +1333,7 @@ function detailHtml(d) {
         ${cl.asked_by ? `<div class="muted">这是在复查页面上手动问的（${esc(cl.asked_by)}），只供参考，没有改动结论。</div>` : ""}
         <div><button class="askbtn" id="askClaude">再让 Sonnet 看一次</button></div>`
       : `<div class="muted">没有发给 Claude。只有"仅因名单外的名字而待确认"的图才会自动发；已拦截的、命中名单的、完全没问题的都不发。</div>
-         <div><button class="askbtn" id="askClaude">让 Sonnet 看一下</button> <span class="muted">约 $0.005 一次，计入每天 $10 的额度；它的回答只供你参考，结论还是由你点"侵权 / 放行"。</span></div>`);
+         <div><button class="askbtn" id="askClaude">让 Sonnet 看一下</button> <span class="muted">约 $0.005 一次，计入每天 $10 的额度。它说"是 IP"，这个设计就直接拦截；说"不是"或"拿不准"不改结论，由你点"侵权 / 放行"。</span></div>`);
   }
   // The verdict that counts is the design's, as it is now: its files follow it (lg_jobs.verdict);
   // checked_verdict is what was said when this file was checked, if that was something else.
