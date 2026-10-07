@@ -497,6 +497,8 @@ const api = REMOTE ? {
   },
   stats() { return this.call({ action: "stats" }); },
   dashboard() { return this.call({ action: "dashboard", days: 14 }); },
+  platforms() { return this.call({ action: "platforms", days: 3 }); },
+  platformOrders(day, platform, verdict) { return this.call({ action: "platform_orders", day, platform, verdict }); },
   scan(day, reviewer) { return this.call({ action: "scan", day, reviewer_label: reviewer }); },
   pause(paused, reviewer) { return this.call({ action: "pause", paused, reviewer_label: reviewer }); },
   fleet(go, reviewer) { return this.call({ action: "fleet", go, reviewer_label: reviewer }); },
@@ -855,6 +857,7 @@ function dashboardHtml(d) {
       ${tile("blue", num(t.repeats), "重复设计，直接沿用", pct(t.repeats, t.done) + " · 不用再检、不用再看")}
       ${tile("", num(d.review_waiting), "待人工复查的设计", "所有日期合计")}
     </div></div>
+    ${platformsHtml()}
     <div><h2>设计总账（每个设计只算一次，所有日期）</h2><div class="tiles">
       ${tile("", num(g.total), "见过的设计")}
       ${tile("red", num(g.block), "判为侵权", `人工确认 ${num(g.human_block)} · Temu 下架 ${num(g.takedown)}`)}
@@ -1480,6 +1483,37 @@ let active = false, scanDay = "", lastSeen = "", lastTyped = 0, dashFailed = 0;
 const TYPING_GRACE_MS = 6000;
 const todayMmdd = () => { const n = new Date(); return String(n.getMonth() + 1).padStart(2, "0") + String(n.getDate()).padStart(2, "0"); };
 
+// ---- by platform: each customer's folder (HL, TK, SDS, ...), files and orders per verdict ----
+// Read once a minute, apart from the dashboard's ten-second numbers; drawn from what was read last.
+let platRows = null, platAt = 0;
+function platformsHtml() {
+  if (!platRows) return "";
+  const cell = (r, v, files, orders) => `<td>${num(files)} 张 <span class="muted">/ ${num(orders)} 单</span>
+    ${orders && v !== "pass" ? `<button class="quiet pcopy" data-day="${esc(r.day)}" data-plat="${esc(r.platform)}" data-v="${v}">复制订单号</button>` : ""}</td>`;
+  const row = r => `<tr><td>${mmdd(r.day)}</td><td><b>${esc(r.platform)}</b></td><td>${num(r.files)} 张 <span class="muted">/ ${num(r.orders)} 单</span></td>
+    ${cell(r, "block", r.block, r.orders_block)}${cell(r, "review", r.review, r.orders_review)}${cell(r, "pass", r.pass, r.orders_pass)}
+    <td>${r.orders ? pct(r.orders_block, r.orders) : ""}</td></tr>`;
+  return `<div class="panel"><div class="mhead"><h2 style="margin:0">按平台（最近 3 天）</h2>
+      <span class="muted">平台 = 当天文件夹下的第一层（HL 2 并入 HL）· 一个订单有几张图时，按其中最重的结论算一次 · 订单号取自文件名</span></div>
+    <table><tr><th>日期</th><th>平台</th><th>检查</th><th>拦截</th><th>待确认</th><th>放行</th><th>拦截订单占比</th></tr>${platRows.map(row).join("") || `<tr><td colspan="7" class="muted">暂无</td></tr>`}</table></div>`;
+}
+async function refreshPlatforms() {
+  if (Date.now() - platAt < 60000) return;
+  platAt = Date.now();
+  try { platRows = (await api.platforms()).rows; } catch (e) { /* the page works without this panel */ }
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest && e.target.closest(".pcopy");
+  if (!b) return;
+  const what = { block: "拦截", review: "待确认" }[b.dataset.v];
+  b.disabled = true;
+  try {
+    const { orders } = await api.platformOrders(b.dataset.day, b.dataset.plat, b.dataset.v);
+    copy(orders.join("\n"), ` ${mmdd(b.dataset.day)} ${b.dataset.plat} ${what}的 ${num(orders.length)} 个订单号`);
+  } catch (err) { alert("没有取到订单号：" + err.message); }
+  b.disabled = false;
+});
+
 async function refreshDashboard() {
   if (view !== "dash" || document.hidden) return;
   clearTimeout(pollTimer);
@@ -1489,7 +1523,7 @@ async function refreshDashboard() {
     && Date.now() - lastTyped < TYPING_GRACE_MS;
   if (!typing) {
     let data = null;
-    try { data = await api.dashboard(); dashFailed = 0; }
+    try { [data] = await Promise.all([api.dashboard(), refreshPlatforms()]); dashFailed = 0; }
     catch (e) {
       // One failed read must not stop the page for good: keep what is shown, say so, try again.
       dashFailed++;
