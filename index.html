@@ -2001,6 +2001,26 @@ function msHoursHtml(rows) {
     <div class="hlabels">${hours.map(h => `<span>${new Date(h.hour).getHours()}</span>`).join("")}</div>
     <div class="hkey">最高的一小时 ${num(top)} 张 · 绿 放行 · 橙 待确认 · 红 拦截 · 灰 出错 · 鼠标放在柱子上看那一小时的数字</div>`;
 }
+// The cloud functions' calls are a quota (Supabase bills beyond what the plan includes): what
+// was used today and this month, and where the month is heading at the pace of the days counted.
+const FN_INCLUDED = 2000000, FN_USD_PER_MILLION = 2;   // the plan, as the owner was told on 2026-10-08; the bill is what counts
+function msCallsTile(c) {
+  if (!c) return "";
+  const perDay = c.month_days ? c.month / c.month_days : 0, monthEnd = perDay * 30;
+  const over = Math.max(0, monthEnd - FN_INCLUDED), cls = monthEnd > FN_INCLUDED ? "amber" : "";
+  return `<div class="tile ${cls}"><b>${num(c.today)}</b><span>今天云端调用次数</span>
+    <small>本月已 ${num(c.month)} 次（从 ${esc(String(c.since || "").slice(5))} 起计）· 照这样一个月约 ${num(Math.round(monthEnd))} 次，套餐含 ${num(FN_INCLUDED)} 次${over ? `，超出部分约 $${(over / 1e6 * FN_USD_PER_MILLION).toFixed(0)}` : ""}</small></div>`;
+}
+function msCallsPanel(c) {
+  if (!c || !(c.by_action || []).length) return "";
+  const row = x => `<tr><td>${esc(x.fn)}</td><td>${esc(x.action)}</td><td>${num(x.n)}</td><td>${pct(x.n, c.today)}</td></tr>`;
+  const day = x => `<tr><td>${esc(String(x.day).slice(5))}</td><td>${num(x.n)}</td><td>${num(x.grab)}</td><td>${num(x.review)}</td></tr>`;
+  return `<details class="panel"><summary><b>云端调用次数的明细</b> <span class="muted">谁在调、调了什么 · 套餐含的次数和超出的价格以 Supabase 账单为准</span></summary>
+    <div class="two" style="margin-top:10px">
+      <div><table><tr><th>云函数</th><th>做什么</th><th>今天次数</th><th>占比</th></tr>${c.by_action.slice(0, 14).map(row).join("")}</table></div>
+      <div><table><tr><th>日期</th><th>合计</th><th>插件（lg-grab）</th><th>复查页（lg-review）</th></tr>${(c.days || []).map(day).join("")}</table></div>
+    </div></details>`;
+}
 function msLiveHtml() {
   const d = mz.live;
   if (!d) return `<div class="panel"><span class="muted">正在读取实时数据…</span></div>`;
@@ -2025,7 +2045,9 @@ function msLiveHtml() {
       ${tile("", `${num(n.arrived_10min)} / ${num(n.judged_10min)}`, "最近 10 分钟：送来 / 判断完", `最后一张送来 ${msAgo(n.last_arrived)} · 判断完 ${msAgo(n.last_judged)}`)}
       ${tile("", `${num(n.arrived_24h)} / ${num(n.judged_24h)}`, "最近 24 小时：送来 / 判断完", `标出 ${num(n.flagged_24h)} 张（${pct(n.flagged_24h, n.judged_24h)}）${Number(n.errors_24h) ? " · 出错 " + num(n.errors_24h) : ""}`)}
       ${tile("blue", msDur(n.wait_median_1h), "从送来到出结论（近 1 小时，中间值）", `近 24 小时九成在 ${msDur(n.wait_p90_24h)} 以内 · 订单图优先时会更久`)}
+      ${msCallsTile(d.calls)}
     </div></div>
+    ${msCallsPanel(d.calls)}
     <div class="panel"><h2>采集的机器 <span class="muted" style="font-weight:400">每台自己开列表、自己点妙手的“采集此商品”· 成功率 = 进了妙手 ÷ 点了采集 · 点机器名看它自己的明细</span></h2>
       <table><tr><th>机器</th><th>今天进妙手</th><th>今天点了采集</th><th>今天成功率</th><th>最近 1 小时进妙手</th><th>累计进妙手</th><th>累计成功率</th><th>最后一个</th></tr>
       ${(d.collectors || []).map(collector).join("") || `<tr><td colspan="8" class="muted">还没有机器采集过</td></tr>`}
