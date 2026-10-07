@@ -501,6 +501,7 @@ const api = REMOTE ? {
   platforms() { return this.call({ action: "platforms", days: 3 }); },
   msItems(level, owner, offset) { return this.call({ action: "ms_items", level, owner, offset, limit: 48 }); },
   msIds(level, owner) { return this.call({ action: "ms_ids", level, owner }); },
+  msLive() { return this.call({ action: "ms_live" }); },
   msDecide(url, decision, ip, reviewer) { return this.call({ action: "ms_decide", url, decision, ip, reviewer_label: reviewer }); },
   platformOrders(day, platform, verdict) { return this.call({ action: "platform_orders", day, platform, verdict }); },
   scan(day, reviewer) { return this.call({ action: "scan", day, reviewer_label: reviewer }); },
@@ -1588,9 +1589,9 @@ async function refreshDashboard() {
 }
 // A tab nobody is looking at does not keep asking; it catches up when it is looked at again.
 document.addEventListener("visibilitychange", () => {
-  if (!["dash", "machines", "cache", "sonnet"].includes(view)) return;
+  if (!["dash", "machines", "cache", "sonnet", "ms"].includes(view)) return;
   clearTimeout(pollTimer);
-  if (!document.hidden) ({ dash: refreshDashboard, cache: refreshCache, sonnet: refreshSonnet, machines: refreshMachinesPage })[view]();
+  if (!document.hidden) ({ dash: refreshDashboard, cache: refreshCache, sonnet: refreshSonnet, machines: refreshMachinesPage, ms: refreshMsLive })[view]();
 });
 
 // ---- 设计: every design on a row, to sort, filter, and export with its files' paths -----------
@@ -1983,6 +1984,65 @@ async function refreshSonnet() {
 // Another source than the orders (product photos, not print files), so its own list and its
 // own numbers. ImageGrab keeps a copy of the box and sends each main picture to be judged; the
 // answers are the same three and go into the record ImageGrab's results page writes.
+// The stream itself, live: what arrives, what waits, what was found, who judges. Redrawn every
+// 15 seconds in its own box, so the list below stays still under the person labelling.
+const msDur = s => s == null ? "–" : s < 90 ? `${Math.round(s)} 秒` : s < 5400 ? `${Math.round(s / 60)} 分钟` : `${(s / 3600).toFixed(1)} 小时`;
+const msAgo = t => t ? msDur((Date.now() - new Date(t).getTime()) / 1000) + "前" : "–";
+function msHoursHtml(rows) {
+  const hours = rows || [], sum = h => Number(h.pass) + Number(h.review) + Number(h.block) + Number(h.errors);
+  const top = Math.max(1, ...hours.map(h => Math.max(Number(h.arrived), sum(h))));
+  const col = (h, body, title) => `<div class="hb" title="${new Date(h.hour).getHours()}:00–${new Date(h.hour).getHours()}:59  ${title}">${body}</div>`;
+  const seg = (n, color) => n ? `<i style="height:${n / top * 100}%;background:${color};border-radius:0"></i>` : "";
+  return `<div class="muted" style="margin:2px 0 4px">送来的</div>
+    <div class="hbars" style="height:70px">${hours.map(h => col(h, `<i style="height:${h.arrived / top * 100}%"></i>`, `送来 ${h.arrived} 张`)).join("")}</div>
+    <div class="muted" style="margin:10px 0 4px">判断完的</div>
+    <div class="hbars" style="height:70px">${hours.map(h => col(h, seg(h.errors, "#999") + seg(h.block, "var(--red)") + seg(h.review, "var(--amber)") + seg(h.pass, "var(--green)"),
+      `判断完 ${sum(h)} 张：放行 ${h.pass} · 待确认 ${h.review} · 拦截 ${h.block}${Number(h.errors) ? " · 出错 " + h.errors : ""}`)).join("")}</div>
+    <div class="hlabels">${hours.map(h => `<span>${new Date(h.hour).getHours()}</span>`).join("")}</div>
+    <div class="hkey">最高的一小时 ${num(top)} 张 · 绿 放行 · 橙 待确认 · 红 拦截 · 灰 出错 · 鼠标放在柱子上看那一小时的数字</div>`;
+}
+function msLiveHtml() {
+  const d = mz.live;
+  if (!d) return `<div class="panel"><span class="muted">正在读取实时数据…</span></div>`;
+  const n = d.now, tile = (cls, value, label, note) => `<div class="tile ${cls}"><b>${value}</b><span>${label}</span>${note ? `<small>${note}</small>` : ""}</div>`;
+  const waiting = Number(n.queued) + Number(n.running);
+  const day = r => `<tr><td>${esc(String(r.day).slice(5))}</td><td>${num(r.arrived)}</td><td>${num(r.block)}</td><td>${num(r.review)}</td><td>${num(r.pass)}</td>
+    <td>${num(r.waiting)}</td><td>${num(r.errors)}</td><td>${msDur(r.wait_median)}</td><td>${num(r.labelled)}</td>
+    <td><div class="seg"><i class="b" style="width:${pct(r.block, r.judged)}"></i><i class="r" style="width:${pct(r.review, r.judged)}"></i><i class="p" style="width:${pct(r.pass, r.judged)}"></i></div></td></tr>`;
+  const machine = m => `<tr><td><b>${esc(m.machine)}</b></td><td>${num(m.judged)}</td><td>${m.seconds} 秒</td><td>${msAgo(m.last_at)}</td></tr>`;
+  const name = x => `<tr><td>${esc(nameOf(x.name))}</td><td>${num(x.pictures)}</td><td>${num(x.block)}</td></tr>`;
+  const owner = o => { const judged = Number(o.block) + Number(o.review) + Number(o.pass);
+    return `<tr><td><b>${esc(o.owner)}</b></td><td>${num(o.products)}</td><td>${num(o.block)}</td><td>${num(o.review)}</td><td>${num(o.pass)}</td><td>${num(o.waiting)}</td><td>${pct(Number(o.block) + Number(o.review), judged)}</td></tr>`; };
+  const card = x => x.status === "error" ? `<div class="dcard err" title="${esc(x.error || "")}"><div class="noimg">出错</div><div>${hhmm(x.finished_at)} · ${esc(x.machine || "")}</div></div>`
+    : `<div class="dcard"><a href="${esc(x.url)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(x.url)}?imageView2/2/w/240/q/70/format/webp" alt=""></a>
+        <div><span class="pill ${esc(x.verdict)}" style="margin-left:0">${VERDICT[x.verdict] || esc(x.verdict)}</span> ${esc((x.labels || "").split("; ").filter(Boolean).map(nameOf).join("、"))}
+          <br><span class="muted">${hhmm(x.finished_at)} · ${esc(x.machine || "")} · 等了 ${msDur(x.waited)}</span></div></div>`;
+  return `<div><h2>实时 <span class="muted" style="font-weight:400">插件送来的每一张图（采集箱主图 ${num(d.box.main)} 张，其余 ${num(d.box.pictures - d.box.main)} 张）· 每 15 秒更新 · 读取于 ${hhmm(d.at)}</span></h2><div class="tiles">
+      ${tile(waiting ? "amber" : "", num(waiting), "正在排队", waiting ? `其中 ${num(n.running)} 张机器已领走 · 最早的等了 ${msDur(n.oldest_waiting)}` : "没有在等的")}
+      ${tile("", `${num(n.arrived_10min)} / ${num(n.judged_10min)}`, "最近 10 分钟：送来 / 判断完", `最后一张送来 ${msAgo(n.last_arrived)} · 判断完 ${msAgo(n.last_judged)}`)}
+      ${tile("", `${num(n.arrived_24h)} / ${num(n.judged_24h)}`, "最近 24 小时：送来 / 判断完", `标出 ${num(n.flagged_24h)} 张（${pct(n.flagged_24h, n.judged_24h)}）${Number(n.errors_24h) ? " · 出错 " + num(n.errors_24h) : ""}`)}
+      ${tile("blue", msDur(n.wait_median_1h), "从送来到出结论（近 1 小时，中间值）", `近 24 小时九成在 ${msDur(n.wait_p90_24h)} 以内 · 订单图优先时会更久`)}
+    </div></div>
+    <div class="panel"><h2>每小时（最近 24 小时）</h2>${msHoursHtml(d.hours)}</div>
+    <div class="panel"><h2>每天</h2><table><tr><th>日期</th><th>送来</th><th>拦截</th><th>待确认</th><th>放行</th><th>排队</th><th>出错</th><th>等待（中间值）</th><th>已标注</th><th>构成</th></tr>${d.days.map(day).join("")}</table></div>
+    <div class="two">
+      <div class="panel"><h2>按采集人</h2><table><tr><th>妙手账号</th><th>商品</th><th>拦截</th><th>待确认</th><th>放行</th><th>没判断</th><th>标出占比</th></tr>${d.owners.map(owner).join("")}</table></div>
+      <div class="panel"><h2>哪些机器在判断（最近 24 小时）</h2><table><tr><th>机器</th><th>张数</th><th>每张</th><th>最后一张</th></tr>${d.machines.map(machine).join("") || `<tr><td colspan="4" class="muted">最近 24 小时没有</td></tr>`}</table></div>
+    </div>
+    <div class="two">
+      <div class="panel"><h2>标出最多的名字（近 8 天）</h2><table><tr><th>名称</th><th>图片数</th><th>其中拦截</th></tr>${d.names.map(name).join("") || `<tr><td colspan="3" class="muted">暂无</td></tr>`}</table></div>
+      <div class="panel"><h2>刚判断完的 ${d.recent.length} 张</h2><div class="feed mfeed">${d.recent.map(card).join("")}</div></div>
+    </div>`;
+}
+async function refreshMsLive() {
+  if (view !== "ms" || document.hidden) return;
+  clearTimeout(pollTimer);
+  try { mz.live = await api.msLive(); } catch (e) { /* keep what is shown; the next round tries again */ }
+  if (view !== "ms") return;
+  const box = $("#msLive"); if (box) box.innerHTML = msLiveHtml();
+  pollTimer = setTimeout(refreshMsLive, 15000);
+}
+
 const MS_LEVELS = { review: "待确认", block: "拦截", pass: "放行", labelled: "已标注", waiting: "还没判断" };
 const mz = { level: "review", owner: null, items: [], counts: {}, owners: [], more: false };
 function msCard(x) {
@@ -2002,7 +2062,8 @@ function msCard(x) {
 function msHtml() {
   const c = mz.counts, tile = (cls, value, label, note) => `<div class="tile ${cls}"><b>${value}</b><span>${label}</span>${note ? `<small>${note}</small>` : ""}</div>`;
   const canCopy = mz.level !== "waiting" && c[mz.level];
-  return `<div><h2>妙手图 <span class="muted" style="font-weight:400">妙手采集箱里的商品，按主图判断 · 和订单图分开看、分开统计 · 不走 Claude</span></h2><div class="tiles">
+  return `<div id="msLive">${msLiveHtml()}</div>
+    <div><h2>妙手图 <span class="muted" style="font-weight:400">妙手采集箱里的商品，按主图判断 · 和订单图分开看、分开统计 · 不走 Claude</span></h2><div class="tiles">
       ${tile("", num(c.total), mz.owner ? esc(mz.owner) + " 采集的商品" : "采集箱里的商品", c.waiting ? `还有 ${num(c.waiting)} 个没判断` : "都判断过了")}
       ${tile("amber", num(c.review), "待确认", "机器拿不准，等人看")}
       ${tile("red", num(c.block), "拦截", "机器认定，未经人看")}
@@ -2064,7 +2125,7 @@ function setView(v) {
   if (v === "dash") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshDashboard(); }
   else if (v === "designs") { loadDesigns(); watchCollect(); }
   else if (v === "sonnet") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshSonnet(); }
-  else if (v === "ms") { mz.items = []; $("#main").innerHTML = `<div class="empty">加载中…</div>`; loadMs(); }
+  else if (v === "ms") { mz.items = []; $("#main").innerHTML = `<div class="empty">加载中…</div>`; loadMs(); refreshMsLive(); }
   else if (v === "cache") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshCache(); }
   else if (v === "machines") { mView = null; $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshMachinesPage(); }
   else if (v === "upload") refreshUploads(); else load();
