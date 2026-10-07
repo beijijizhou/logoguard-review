@@ -80,6 +80,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 @media (max-width:820px) { .shell { grid-template-columns:minmax(0,1fr); }
   .side { flex-direction:row; flex-wrap:wrap; width:auto; position:static; padding:10px 16px 0; }
   .side button.sub { margin-left:0; } }
+.moved { margin:0 0 8px; padding:8px 10px; border-radius:8px; background:var(--amber-bg); font-size:14px; }
 /* the record wall's filters */
 .filters { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin-bottom:12px; }
 .filters label { display:flex; gap:6px; align-items:center; font-size:14px; color:var(--muted); }
@@ -1327,9 +1328,13 @@ function detailHtml(d) {
       : `<div class="muted">没有发给 Claude。只有"仅因名单外的名字而待确认"的图才会自动发；已拦截的、命中名单的、完全没问题的都不发。</div>
          <div><button class="askbtn" id="askClaude">让 Sonnet 看一下</button> <span class="muted">约 $0.005 一次，计入每天 $10 的额度；它的回答只供你参考，结论还是由你点"侵权 / 放行"。</span></div>`);
   }
+  // The verdict that counts is the design's, as it is now; the file keeps what was said when it was checked.
+  const moved = !!(d.design && d.design.verdict !== j.verdict);
+  const now = d.design ? { verdict: d.design.verdict, labels: d.design.labels || j.labels } : j;
   return `<div class="box"><button class="x" id="sheetX" aria-label="关闭">×</button>
     <div class="top"><div>${d.thumb_url ? `<img src="${esc(d.thumb_url)}" alt="">` : `<div class="dcard"><div class="noimg">无缩略图</div></div>`}</div>
-    <div><h3><span class="pill ${esc(j.verdict)}">${VERDICT[j.verdict] || ""}</span> ${esc((j.labels || "").split("; ").filter(Boolean).map(nameOf).join("、") || "没有发现问题")}</h3>
+    <div><h3><span class="pill ${esc(now.verdict)}">${VERDICT[now.verdict] || ""}</span> ${esc((now.labels || "").split("; ").filter(Boolean).map(nameOf).join("、") || "没有发现问题")}</h3>
+      ${moved ? `<div class="moved">这个设计现在的结论是<b>${VERDICT[now.verdict]}</b>（${esc(SOURCE[d.design.source] || d.design.source)}）。这个文件检测的时候还是<b>${VERDICT[j.verdict]}</b>，结论是后来改的。</div>` : ""}
       <table><tr><th>文件</th><td class="raw">${esc(j.file_name || "")}</td></tr>
       <tr><th>文件夹</th><td>${esc(j.folder || "")}</td></tr>
       ${d.machine_state ? `<tr><th>当时这台机器</th><td>${esc(stateLine(d.machine_state, d.machine_hw))}${d.machine_state.per_10min != null ? ` · 那 10 分钟检测了 ${num(d.machine_state.per_10min)} 张` : ""}
