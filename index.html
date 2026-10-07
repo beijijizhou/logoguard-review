@@ -369,6 +369,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
     <button data-view="machines" class="sub">机器</button>
     <button data-view="cache" class="sub">查重缓存</button>
     <button data-view="sonnet" class="sub">Sonnet 复核</button>
+    <button data-view="grab" class="sub">Temu 图</button>
   </nav>
   <main id="main"><div class="empty">加载中…</div></main>
 </div>
@@ -498,6 +499,8 @@ const api = REMOTE ? {
   stats() { return this.call({ action: "stats" }); },
   dashboard() { return this.call({ action: "dashboard", days: 14 }); },
   platforms() { return this.call({ action: "platforms", days: 3 }); },
+  grabItems(level, offset) { return this.call({ action: "grab_items", level, offset, limit: 48 }); },
+  grabDecide(url, decision, ip, reviewer) { return this.call({ action: "grab_decide", url, decision, ip, reviewer_label: reviewer }); },
   platformOrders(day, platform, verdict) { return this.call({ action: "platform_orders", day, platform, verdict }); },
   scan(day, reviewer) { return this.call({ action: "scan", day, reviewer_label: reviewer }); },
   pause(paused, reviewer) { return this.call({ action: "pause", paused, reviewer_label: reviewer }); },
@@ -1975,6 +1978,67 @@ async function refreshSonnet() {
   pollTimer = setTimeout(refreshSonnet, sonnetFailed ? Math.min(60000, 5000 * sonnetFailed) : 10000);
 }
 
+// ---- Temu 图: the pictures ImageGrab sent (product photos on Temu, not order files) -------------
+// Looked at apart from the orders: another source, so another list and its own numbers. The
+// answers are the same three and go into the same record ImageGrab's results page writes.
+const GRAB_LEVELS = { review: "待确认", block: "拦截", pass: "放行", labelled: "已标注" };
+const gz = { level: "review", items: [], counts: {}, more: false };
+function grabCard(x) {
+  const said = { infringing: "侵权", false_positive: "不侵权", unsure: "拿不准" }[x.human];
+  return `<div class="dcard" data-url="${esc(x.url)}">
+    <a href="${esc(x.url)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(x.url)}?imageView2/2/w/360/q/70/format/webp" alt=""></a>
+    <div><span class="pill ${esc(x.verdict)}">${VERDICT[x.verdict] || esc(x.verdict)}</span> ${esc(x.labels || "")}
+      ${said ? `<br><b>人工：${said}</b>${x.human_ip ? " · " + esc(x.human_ip) : ""}${x.human_by ? ` <span class="muted">${esc(x.human_by)}</span>` : ""}` : ""}
+      ${x.same > 1 ? `<br><span class="muted">同图案的 Temu 图 ${num(x.same)} 张</span>` : ""}
+      ${x.design_id ? `<br><span class="muted">和订单设计 #${esc(x.design_id)} 是同一图案</span>` : ""}
+      ${x.page_url ? `<br><a href="${esc(x.page_url)}" target="_blank" rel="noopener">商品页</a>` : ""}</div>
+    <div class="quick" style="grid-template-columns:1fr 1fr 1fr"><button class="yes" data-d="infringing">侵权</button><button class="no" data-d="false_positive">不侵权</button><button data-d="unsure">拿不准</button></div></div>`;
+}
+function grabHtml() {
+  const c = gz.counts, tile = (cls, value, label, note) => `<div class="tile ${cls}"><b>${value}</b><span>${label}</span>${note ? `<small>${note}</small>` : ""}</div>`;
+  const all = (c.review || 0) + (c.block || 0) + (c.pass || 0) + (c.labelled || 0);
+  return `<div><h2>Temu 图 <span class="muted" style="font-weight:400">ImageGrab 插件送来的商品图 · 和订单图分开看、分开统计 · 不走 Claude</span></h2><div class="tiles">
+      ${tile("", num(all), "判断完的图", gz.waiting ? `还有 ${num(gz.waiting)} 张在排队` : "没有在排队的")}
+      ${tile("amber", num(c.review), "待确认", "机器拿不准，等人看")}
+      ${tile("red", num(c.block), "拦截", "机器认定，未经人看")}
+      ${tile("green", num(c.pass), "放行", "未经人看")}
+      ${tile("blue", num(c.labelled), "已标注", `侵权 ${num(c.infringing)} · 不侵权 ${num(c.false_positive)} · 拿不准 ${num(c.unsure)}`)}
+    </div></div>
+    <div class="panel"><div class="chips">${Object.entries(GRAB_LEVELS).map(([k, v]) =>
+        `<button data-level="${k}" class="${gz.level === k ? "on" : ""}">${v} ${num(c[k])}</button>`).join("")}</div>
+      <div class="muted" style="margin-bottom:10px">点图看原图。标“侵权”的以后直接拦截，“不侵权”的直接放行；图案指纹对得上的订单设计也跟着走。标过的图在“已标注”里，可以改。</div>
+      <div class="feed mfeed" id="grabFeed">${gz.items.map(grabCard).join("") || `<span class="muted">这一类现在没有图。</span>`}</div>
+      ${gz.more ? `<div style="text-align:center;margin-top:12px"><button class="quiet" id="grabMore">再看 48 张</button></div>` : ""}</div>`;
+}
+async function loadGrab(more) {
+  if (view !== "grab") return;
+  try {
+    const d = await api.grabItems(gz.level, more ? gz.items.length : 0);
+    if (view !== "grab") return;
+    gz.items = more ? gz.items.concat(d.items) : d.items;
+    gz.counts = d.counts; gz.waiting = d.waiting; gz.more = d.items.length === 48;
+  } catch (e) { $("#main").innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; return; }
+  $("#main").innerHTML = grabHtml();
+  $("#main").querySelectorAll(".chips button").forEach(b => b.onclick = () => { gz.level = b.dataset.level; gz.items = []; $("#main").innerHTML = `<div class="empty">加载中…</div>`; loadGrab(); });
+  const m = $("#grabMore"); if (m) m.onclick = () => { m.disabled = true; loadGrab(true); };
+  $("#grabFeed").querySelectorAll(".quick button").forEach(b => b.onclick = () => grabDecide(b));
+}
+async function grabDecide(button) {
+  const card = button.closest(".dcard"), url = card.dataset.url, decision = button.dataset.d;
+  const it = gz.items.find(x => x.url === url);
+  const first = ((it && it.labels) || "").split("; ").filter(Boolean)[0] || "";
+  card.querySelectorAll(".quick button").forEach(b => { b.disabled = true; });
+  try {
+    const r = await api.grabDecide(url, decision, decision === "infringing" ? first : null, $("#reviewer").value.trim() || null);
+    toast("已标注" + (r.ledger && decision !== "unsure" ? "，同图案的订单设计也跟着走" : ""));
+    // the picture leaves the list it was in (it is "已标注" now); the numbers follow at once
+    const was = it && it.human ? "labelled" : gz.level;
+    gz.items = gz.items.filter(x => x.url !== url);
+    if (was !== "labelled") { gz.counts[was] = Math.max(0, (gz.counts[was] || 0) - 1); gz.counts.labelled = (gz.counts.labelled || 0) + 1; }
+    if (gz.level === "labelled" || !gz.items.length) loadGrab(); else card.remove();
+  } catch (e) { alert("保存失败：" + e.message); card.querySelectorAll(".quick button").forEach(b => { b.disabled = false; }); }
+}
+
 function setView(v) {
   view = v;
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
@@ -1983,6 +2047,7 @@ function setView(v) {
   if (v === "dash") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshDashboard(); }
   else if (v === "designs") { loadDesigns(); watchCollect(); }
   else if (v === "sonnet") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshSonnet(); }
+  else if (v === "grab") { gz.items = []; $("#main").innerHTML = `<div class="empty">加载中…</div>`; loadGrab(); }
   else if (v === "cache") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshCache(); }
   else if (v === "machines") { mView = null; $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshMachinesPage(); }
   else if (v === "upload") refreshUploads(); else load();
