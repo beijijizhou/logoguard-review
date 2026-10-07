@@ -1142,7 +1142,8 @@ function wireMachines() {
       ? `停止检测主机 ${m} 上的三个程序（检测、同步、日常）？停了之后新的图不会进队列、报告不会更新、页面的“开始检测”没人接，直到你点“启动”。`
       : `停止 ${m} 上的检测程序？它会立刻结束并把显卡让出来，手头没做完的图会回到队列。之后要点"启动"它才会再工作。`)) return;
     b.disabled = true;
-    try { await api.command(m, what, who()); toast(`已通过通道发给 ${m}：${DO[what]}`); }
+    try { const r = await api.command(m, what, who());
+      toast(`已通过通道发给 ${m}：${DO[what]}` + (r.via === "direct" ? "（项目钥匙没用上，走了备用路径，指令照常送达）" : "")); }
     catch (e) { toast(e.message); }
     setTimeout(again, 4000);
   });
