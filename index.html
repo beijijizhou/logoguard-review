@@ -2010,6 +2010,9 @@ function msLiveHtml() {
     <td>${num(r.waiting)}</td><td>${num(r.errors)}</td><td>${msDur(r.wait_median)}</td><td>${num(r.labelled)}</td>
     <td><div class="seg"><i class="b" style="width:${pct(r.block, r.judged)}"></i><i class="r" style="width:${pct(r.review, r.judged)}"></i><i class="p" style="width:${pct(r.pass, r.judged)}"></i></div></td></tr>`;
   const machine = m => `<tr><td><b>${esc(m.machine)}</b></td><td>${num(m.judged)}</td><td>${m.seconds} 秒</td><td>${msAgo(m.last_at)}</td></tr>`;
+  const collector = m => `<tr><td><b>${m.machine ? `<a href="https://beijijizhou.github.io/imagegrab-results/?m=${encodeURIComponent(m.machine)}" target="_blank" rel="noopener">${esc(m.machine)}</a>` : "合计"}</b></td>
+    <td>${num(m.arrived_today)}</td><td>${num(m.pressed_today)}</td><td>${pct(m.arrived_today, m.pressed_today)}</td><td>${num(m.arrived_hour)}</td>
+    <td>${num(m.arrived)}</td><td>${pct(m.arrived, m.pressed)}</td><td>${m.machine ? msAgo(m.last_at) : ""}</td></tr>`;
   const name = x => `<tr><td>${esc(nameOf(x.name))}</td><td>${num(x.pictures)}</td><td>${num(x.block)}</td></tr>`;
   const owner = o => { const judged = Number(o.block) + Number(o.review) + Number(o.pass);
     return `<tr><td><b>${esc(o.owner)}</b></td><td>${num(o.products)}</td><td>${num(o.block)}</td><td>${num(o.review)}</td><td>${num(o.pass)}</td><td>${num(o.waiting)}</td><td>${pct(Number(o.block) + Number(o.review), judged)}</td></tr>`; };
@@ -2023,6 +2026,10 @@ function msLiveHtml() {
       ${tile("", `${num(n.arrived_24h)} / ${num(n.judged_24h)}`, "最近 24 小时：送来 / 判断完", `标出 ${num(n.flagged_24h)} 张（${pct(n.flagged_24h, n.judged_24h)}）${Number(n.errors_24h) ? " · 出错 " + num(n.errors_24h) : ""}`)}
       ${tile("blue", msDur(n.wait_median_1h), "从送来到出结论（近 1 小时，中间值）", `近 24 小时九成在 ${msDur(n.wait_p90_24h)} 以内 · 订单图优先时会更久`)}
     </div></div>
+    <div class="panel"><h2>采集的机器 <span class="muted" style="font-weight:400">每台自己开列表、自己点妙手的“采集此商品”· 成功率 = 进了妙手 ÷ 点了采集 · 点机器名看它自己的明细</span></h2>
+      <table><tr><th>机器</th><th>今天进妙手</th><th>今天点了采集</th><th>今天成功率</th><th>最近 1 小时进妙手</th><th>累计进妙手</th><th>累计成功率</th><th>最后一个</th></tr>
+      ${(d.collectors || []).map(collector).join("") || `<tr><td colspan="8" class="muted">还没有机器采集过</td></tr>`}
+      ${(d.collectors || []).length > 1 ? collector({ machine: "", ...Object.fromEntries(["arrived_today", "pressed_today", "arrived_hour", "arrived", "pressed"].map(k => [k, d.collectors.reduce((a, m) => a + Number(m[k]), 0)])) }) : ""}</table></div>
     <div class="panel"><h2>每小时（最近 24 小时）</h2>${msHoursHtml(d.hours)}</div>
     <div class="panel"><h2>每天</h2><table><tr><th>日期</th><th>送来</th><th>拦截</th><th>待确认</th><th>放行</th><th>排队</th><th>出错</th><th>等待（中间值）</th><th>已标注</th><th>构成</th></tr>${d.days.map(day).join("")}</table></div>
     <div class="two">
