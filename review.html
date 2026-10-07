@@ -1701,6 +1701,14 @@ function cacheHtml(d) {
     <td>${num(x.exact)} <span class="muted">${pct(x.exact, x.done)}</span></td>
     <td>${x.sec ?? "–"} 秒</td><td>${Number(x.gpu_hours || 0).toFixed(1)} 小时</td><td><b>${saved(x).toFixed(1)} 小时</b></td>
     <td><div class="bar cachebar" title="上显卡 ${x.analysed} · 相似设计沿用 ${x.similar} · 同一文件沿用 ${x.exact}"><i class="g" style="width:${w(x, "analysed")}%"></i><i class="s" style="width:${w(x, "similar")}%"></i><i class="e" style="width:${w(x, "exact")}%"></i></div></td></tr>`;
+  const M = d.merges || {};
+  const WHY = { human_decided: "你判了它的同款", merge_script: "整理总账" };
+  const mergeRow = m => `<tr ${m.job ? `data-job="${m.job}" title="点开看保留的那个设计"` : ""}>
+    <td>${m.thumb_url ? `<img class="lthumb" src="${esc(m.thumb_url)}" loading="lazy" alt="">` : ""}</td>
+    <td>${new Date(m.at).toLocaleString("zh-CN", { hour12: false, month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+    <td>#${m.dropped} <span class="muted">${VERDICT[m.was_verdict] || ""} · ${SOURCE[m.was_source] || m.was_source || ""}</span></td>
+    <td>#${m.kept}</td><td>${m.bits != null ? m.bits + " / 256 位" : ""}</td><td>${num(m.files)}</td><td>${WHY[m.why] || esc(m.why || "")}</td>
+    <td>${m.verdict ? `<span class="pill ${esc(m.verdict)}">${VERDICT[m.verdict]}</span> <span class="muted">${SOURCE[m.source] || ""}</span>` : `<span class="muted">又被并入别的设计</span>`}</td></tr>`;
   // how often a design comes back
   const sp = d.spread || [], spTop = Math.max(1, ...sp.map(s => Number(s.files)));
   const designs = sp.reduce((s, x) => s + Number(x.designs), 0), files = sp.reduce((s, x) => s + Number(x.files), 0);
@@ -1745,6 +1753,17 @@ function cacheHtml(d) {
         <div class="panel" style="margin-top:18px"><h2>最近 24 小时，每台机器</h2>
         <table><tr><th>机器</th><th>上显卡</th><th>沿用</th><th>沿用占比</th></tr>${(d.by_machine || []).map(mRow).join("")}</table></div></div>
     </div>
+    <div class="panel"><div class="mhead"><h2 style="margin:0">同一图案被记成两个设计的，已合并 ${num(M.total)} 个</h2>
+        <span class="muted">你判过一个设计后，指纹相近的其它设计自动并进来，你的结论只需要给一次</span></div>
+      <div class="tiles">
+        ${tile("", num(M.total), "合并掉的重复设计", `${num(M.files)} 张订单图改记到保留的设计上`)}
+        ${tile("green", num(M.by_answer), "因为你判了而自动合并", "判一次，相近的都跟着")}
+        ${tile("", num(M.by_script), "整理总账时合并", "相似度门槛放宽后补做的")}
+        ${tile("blue", num(M.cards_removed), "少看的复查卡片", "重复的那张从待确认里拿掉了")}
+      </div>
+      ${(M.recent || []).length ? `<table class="slog"><tr><th></th><th>时间</th><th>合并掉的</th><th>并入</th><th>相差</th><th>订单图</th><th>原因</th><th>现在的结论</th></tr>${M.recent.map(mergeRow).join("")}</table>`
+        : `<span class="muted">还没有合并过</span>`}
+      <div class="hkey">被合并掉的那一行连同它的复查卡片都留有备份，可以恢复。同一图案印在不同颜色衣服上、裁出来的比例差得多的，指纹认不出是同一个，仍然会分开出现。</div></div>
     <div class="panel"><div class="mhead"><h2 style="margin:0">最近 ${(d.recent || []).length} 次沿用，逐条</h2><span class="muted">图是被认出的那个设计第一次出现时的样子 · 点一张看那个设计当初是怎么判断的</span></div>
       <div class="feed mfeed" id="cacheRecent" data-key="${esc((d.recent || []).map(r => r.id).join(","))}">${(d.recent || []).map(ev).join("") || `<span class="muted">还没有沿用过</span>`}</div></div>
     </div>`;
@@ -1761,6 +1780,7 @@ async function refreshCache() {
     const fresh = $("#cacheRecent");
     if (kept && fresh && kept.dataset.key === fresh.dataset.key) fresh.replaceWith(kept);
     $("#main").querySelectorAll("#cacheRecent .dcard[data-job]").forEach(c => c.onclick = () => showDetail(c.dataset.job));
+    $("#main").querySelectorAll(".slog tr[data-job]").forEach(r => r.onclick = () => showDetail(r.dataset.job));
   } catch (e) {
     cacheFailed++;
     if (view !== "cache") return;
