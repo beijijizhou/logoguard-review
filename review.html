@@ -372,7 +372,7 @@ tr.on td { background:var(--blue-bg); }
     <button data-view="cache" class="sub">查重缓存</button>
     <button data-view="sonnet" class="sub">Sonnet 复核</button>
     <button data-view="ms" class="sub">妙手图</button>
-    <button data-view="admin" class="sub">用户与计费</button>
+    <button data-view="admin" class="sub" hidden>用户与计费</button>
   </nav>
   <main id="main"><div class="empty">加载中…</div></main>
 </div>
@@ -2321,6 +2321,9 @@ $("#q").addEventListener("keydown", e => {
     $("#mode").hidden = true;  // only flagged images are relayed
     $("#tabs").hidden = false;
     document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => setView(b.dataset.view));
+    // "用户与计费" is kept out of sight until there are customers (the owner, 2026-10-08): it shows
+    // only when the page is opened with #admin at the end of its address.
+    if (location.hash === "#admin") document.querySelector('#tabs [data-view="admin"]').hidden = false;
   }
   const list = await api.ips().catch(() => []);
   const dl = document.createElement("datalist"); dl.id = "iplist";
@@ -2329,6 +2332,6 @@ $("#q").addEventListener("keydown", e => {
     const o = document.createElement("option"); o.value = e.name; o.label = e.category; dl.appendChild(o);
   }
   document.body.appendChild(dl);
-  if (REMOTE) setView("dash"); else { stats(); load(); }
+  if (REMOTE) setView(location.hash === "#admin" ? "admin" : "dash"); else { stats(); load(); }
 })();
 </script></body></html>
