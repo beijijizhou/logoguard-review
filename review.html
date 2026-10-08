@@ -1932,8 +1932,14 @@ function sonnetHtml(d) {
   // what is left, by how many orders a design has, and what looking at it would take: the unseen
   // designs times the measured tokens a design; percent only once a day has both readings
   const perTok = Number(cT.measured) ? Number(cT.tokens) / Number(cT.measured) : null;
-  const read = (cv.days || []).filter(x => x.h5_before != null && x.h5_after != null && Number(x.h5_after) >= Number(x.h5_before) && Number(x.designs));
-  const perH5 = read.length ? read.reduce((a, x) => a + Number(x.h5_after) - Number(x.h5_before), 0) / read.reduce((a, x) => a + Number(x.designs), 0) : null;
+  // only the rounds that carry both readings count, a day at a time: the percent from the first
+  // reading before to the last after, over the designs of those rounds
+  const waves = {};
+  (cv.rounds || []).filter(x => x.h5_before != null && x.h5_after != null).forEach(x => {
+    const w = waves[String(x.at).slice(0, 10)] ||= { lo: 100, hi: 0, designs: 0 };
+    w.lo = Math.min(w.lo, Number(x.h5_before)); w.hi = Math.max(w.hi, Number(x.h5_after)); w.designs += Number(x.designs); });
+  const read = Object.values(waves).filter(w => w.hi >= w.lo && w.designs);
+  const perH5 = read.length ? read.reduce((a, w) => a + w.hi - w.lo, 0) / read.reduce((a, w) => a + w.designs, 0) : null;
   const bandName = b => b.lo >= 5 ? "5 单及以上" : b.lo === 3 ? "3 到 4 单" : b.lo + " 单";
   const need = k => perTok == null ? "–" : Number(k) ? "约 " + tok(Math.round(Number(k) * perTok)) : "0";
   const needH5 = k => !Number(k) ? "" : perH5 == null ? `<span class="muted">还没测到</span>` : "约 " + (Number(k) * perH5).toFixed(0) + "%";
