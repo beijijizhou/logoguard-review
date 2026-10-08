@@ -1915,6 +1915,33 @@ function sonnetHtml(d) {
     ${x.decided || !x.job ? "" : `<div class="quick"><button class="yes" data-d="infringing" data-ip="${esc((x.names || "").split("; ")[0])}">侵权</button><button class="no" data-d="false_positive">放行</button></div>`}</div>`;
   const left = Math.max(0, Number(d.limit) - Number(d.spent));
   const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  // the conversation review (the subscription, no money): tokens and the plan's own percentages
+  const cv = d.conv || {}, cT = cv.total || {}, cDay = (cv.days || []).find(x => x.day === cv.today) || {};
+  const tok = v => v == null ? "–" : Number(v) >= 1e6 ? (Number(v) / 1e6).toFixed(2) + " 百万" : Number(v) >= 1e4 ? (Number(v) / 1e4).toFixed(1) + " 万" : num(v);
+  const each = (t, n) => t != null && Number(n) ? num(Math.round(Number(t) / Number(n))) : "–";
+  const span = (a, b) => a == null && b == null ? `<span class="muted">没读</span>`
+    : a == null ? `<span class="muted">开工前没读</span> → ${Number(b)}%`
+    : b == null ? `${Number(a)}% → <span class="muted">没读</span>`
+    : `${Number(a)}% → ${Number(b)}% <span class="muted">（${Number(b) >= Number(a) ? "+" + (Number(b) - Number(a)).toFixed(0) + " 个点" : "中间重置过"}）</span>`;
+  const said = x => { const a = x.answers || x; return `是 IP ${num(a.ip)} · 不是 ${num(a.not_ip)} · 拿不准 ${num(a.unsure)}`; };
+  const convDay = x => `<tr><td>${esc(x.day)}</td><td>${num(x.rounds)}</td><td>${num(x.designs)}</td><td>${said(x)}</td><td>${tok(x.tokens)}</td>
+    <td>${each(x.tokens, x.measured)}</td><td>${span(x.h5_before, x.h5_after)}</td><td>${span(x.week_before, x.week_after)}</td></tr>`;
+  const convRound = x => `<tr><td>${new Date(x.at).toLocaleString("zh-CN", { hour12: false })}</td><td>${esc(x.round)}</td><td>${num(x.designs)}</td>
+    <td>${said(x)}</td><td>${x.subagents == null ? "–" : num(x.subagents)}</td><td>${tok(x.tokens)}</td><td>${each(x.tokens, x.designs)}</td>
+    <td>${span(x.h5_before, x.h5_after)}</td><td>${span(x.week_before, x.week_after)}</td><td class="muted">${esc(x.note || "")}</td></tr>`;
+  const convPanel = `<div class="panel"><div class="mhead"><h2 style="margin:0">对话看图用了多少额度</h2>
+      <span class="muted">订阅额度，不花钱 · token 是看图的子任务报的数 · 百分比是套餐自己的读数（整个账户的，同一时段别的对话也算在里面）</span></div>
+    <div class="tiles">
+      ${tile("", num(cDay.designs), "今天对话看了", cDay.rounds ? `${num(cDay.rounds)} 轮 · ${said(cDay)}` : "今天还没有")}
+      ${tile("", tok(cDay.tokens), "今天用的 token", cDay.tokens != null ? `每个设计约 ${each(cDay.tokens, cDay.measured)}` : "")}
+      ${tile("", cDay.h5_after == null ? "–" : Number(cDay.h5_after) + "%", "5 小时额度已用", cDay.h5_after == null ? "还没读过" : cDay.h5_before == null ? "开工前没读，算不出这一波占多少" : `开工前 ${Number(cDay.h5_before)}%`)}
+      ${tile("", cDay.week_after == null ? "–" : Number(cDay.week_after) + "%", "每周额度已用", cDay.week_after == null ? "还没读过" : cDay.week_before == null ? "开工前没读，算不出这一波占多少" : `开工前 ${Number(cDay.week_before)}%`)}
+      ${tile("", num(cT.designs), "累计看过的设计", `${num(cT.rounds)} 轮 · ${tok(cT.tokens)} token · 每个约 ${each(cT.tokens, cT.measured)}`)}
+    </div>
+    ${(cv.days || []).length ? `<table><tr><th>哪天</th><th>轮数</th><th>设计</th><th>对话说</th><th>token</th><th>每个设计</th><th>5 小时额度</th><th>每周额度</th></tr>${cv.days.map(convDay).join("")}</table>
+      <details style="margin-top:8px"><summary class="muted">每一轮（最近 ${cv.rounds.length} 轮，最新的在前）</summary>
+      <table><tr><th>时间</th><th>轮</th><th>设计</th><th>对话说</th><th>子任务</th><th>token</th><th>每个设计</th><th>5 小时额度</th><th>每周额度</th><th>备注</th></tr>${cv.rounds.map(convRound).join("")}</table></details>`
+      : `<span class="muted">还没有记录。对话每看完一轮，用 scripts/conversation_review.py usage 记一行。</span>`}</div>`;
   return `<div class="dash">
     <div class="panel hero">
       <div class="mhead"><b class="nm">Sonnet 复核</b><span class="muted">${n ? `只看订单量 ${n} 单以上的设计，订单最多的先看` : "规则没有打开：每台机器第一次见到一个设计就问，先到先得"}</span>
@@ -1931,6 +1958,7 @@ function sonnetHtml(d) {
       ${tile("amber", num(t.to_review), "放行 → 待确认", "Sonnet 发现了 IP")}
       ${tile("green", num(t.to_pass), "待确认 → 放行", "Sonnet 说不是 IP")}
     </div></div>
+    ${convPanel}
     <div class="panel"><div class="mhead"><h2 style="margin:0">核对：机器的三类结论，Sonnet 同意多少</h2>
         <span class="muted">每一类都从订单最多的设计看起 · 哪一类“不同意”的比例高，就是哪一类的规则要修</span></div>
       <table><tr><th>机器的结论</th><th>已核对</th><th>还在等</th><th>Sonnet 说是 IP</th><th>拿不准</th><th>Sonnet 说不是 IP</th><th>和机器相反的</th><th>相反的里人工看过</th></tr>
