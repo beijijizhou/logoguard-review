@@ -1929,6 +1929,27 @@ function sonnetHtml(d) {
   const convRound = x => `<tr><td>${new Date(x.at).toLocaleString("zh-CN", { hour12: false })}</td><td>${esc(x.round)}</td><td>${num(x.designs)}</td>
     <td>${said(x)}</td><td>${x.subagents == null ? "–" : num(x.subagents)}</td><td>${tok(x.tokens)}</td><td>${each(x.tokens, x.designs)}</td>
     <td>${span(x.h5_before, x.h5_after)}</td><td>${span(x.week_before, x.week_after)}</td><td class="muted">${esc(x.note || "")}</td></tr>`;
+  // what is left, by how many orders a design has, and what looking at it would take: the unseen
+  // designs times the measured tokens a design; percent only once a day has both readings
+  const perTok = Number(cT.measured) ? Number(cT.tokens) / Number(cT.measured) : null;
+  const read = (cv.days || []).filter(x => x.h5_before != null && x.h5_after != null && Number(x.h5_after) >= Number(x.h5_before) && Number(x.designs));
+  const perH5 = read.length ? read.reduce((a, x) => a + Number(x.h5_after) - Number(x.h5_before), 0) / read.reduce((a, x) => a + Number(x.designs), 0) : null;
+  const bandName = b => b.lo >= 5 ? "5 单及以上" : b.lo === 3 ? "3 到 4 单" : b.lo + " 单";
+  const need = k => perTok == null ? "–" : Number(k) ? "约 " + tok(Math.round(Number(k) * perTok)) : "0";
+  const needH5 = k => !Number(k) ? "" : perH5 == null ? `<span class="muted">还没测到</span>` : "约 " + (Number(k) * perH5).toFixed(0) + "%";
+  const bandRow = (name, b, cls) => `<tr class="${cls || ""}"><td>${name}</td><td>${num(b.designs)}</td><td>${num(b.files)}</td>
+    <td>${Number(b.unseen) ? `<b>${num(b.unseen)}</b>` : `<span class="muted">0，都看过或已有结论</span>`}</td><td>${Number(b.unseen) ? num(b.unseen_files) : ""}</td>
+    <td>${need(b.unseen)}</td><td>${needH5(b.unseen)}</td></tr>`;
+  const bands = cv.bands || [], below = bands.filter(b => b.lo < Number(cv.min_orders || 5));
+  const sumOf = list => list.reduce((a, b) => ({ designs: a.designs + Number(b.designs), files: a.files + Number(b.files),
+    unseen: a.unseen + Number(b.unseen), unseen_files: a.unseen_files + Number(b.unseen_files) }), { designs: 0, files: 0, unseen: 0, unseen_files: 0 });
+  const bandTable = !bands.length ? "" : `<h3 style="margin:14px 0 4px">还没看过的，全部看完要多少</h3>
+    <div class="muted" style="margin-bottom:6px">同一个图案的订单图已合并成一个设计，对话每个设计只看一次 · 现在的规则只看 ${num(cv.min_orders || 5)} 单及以上 ·
+      token 按已测的平均每个设计 ${perTok == null ? "–" : num(Math.round(perTok))} 估 · 5 小时额度要等有一波开工前后都读过才算得出</div>
+    <table><tr><th>订单数</th><th>设计</th><th>订单图</th><th>还没看过的设计</th><th>对应的订单图</th><th>看完要的 token</th><th>占 5 小时额度</th></tr>
+      ${bands.map(b => bandRow(bandName(b), b, b.lo >= Number(cv.min_orders || 5) ? "cur" : "")).join("")}
+      ${below.filter(b => b.lo >= 2).length > 1 ? bandRow("2 到 4 单合计", sumOf(below.filter(b => b.lo >= 2))) : ""}
+      ${bandRow("全部", sumOf(bands))}</table>`;
   const convPanel = `<div class="panel"><div class="mhead"><h2 style="margin:0">对话看图用了多少额度</h2>
       <span class="muted">订阅额度，不花钱 · token 是看图的子任务报的数 · 百分比是套餐自己的读数（整个账户的，同一时段别的对话也算在里面）</span></div>
     <div class="tiles">
@@ -1938,7 +1959,8 @@ function sonnetHtml(d) {
       ${tile("", cDay.week_after == null ? "–" : Number(cDay.week_after) + "%", "每周额度已用", cDay.week_after == null ? "还没读过" : cDay.week_before == null ? "开工前没读，算不出这一波占多少" : `开工前 ${Number(cDay.week_before)}%`)}
       ${tile("", num(cT.designs), "累计看过的设计", `${num(cT.rounds)} 轮 · ${tok(cT.tokens)} token · 每个约 ${each(cT.tokens, cT.measured)}`)}
     </div>
-    ${(cv.days || []).length ? `<table><tr><th>哪天</th><th>轮数</th><th>设计</th><th>对话说</th><th>token</th><th>每个设计</th><th>5 小时额度</th><th>每周额度</th></tr>${cv.days.map(convDay).join("")}</table>
+    ${bandTable}
+    ${(cv.days || []).length ? `<h3 style="margin:14px 0 4px">已经用掉的</h3><table><tr><th>哪天</th><th>轮数</th><th>设计</th><th>对话说</th><th>token</th><th>每个设计</th><th>5 小时额度</th><th>每周额度</th></tr>${cv.days.map(convDay).join("")}</table>
       <details style="margin-top:8px"><summary class="muted">每一轮（最近 ${cv.rounds.length} 轮，最新的在前）</summary>
       <table><tr><th>时间</th><th>轮</th><th>设计</th><th>对话说</th><th>子任务</th><th>token</th><th>每个设计</th><th>5 小时额度</th><th>每周额度</th><th>备注</th></tr>${cv.rounds.map(convRound).join("")}</table></details>`
       : `<span class="muted">还没有记录。对话每看完一轮，用 scripts/conversation_review.py usage 记一行。</span>`}</div>`;
