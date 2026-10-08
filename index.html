@@ -291,6 +291,8 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 /* the designs table */
 .dz { display:flex; flex-direction:column; gap:12px; grid-column:1/-1; min-width:0; }
 .dz .bar2 { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; }
+.bar2 { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; } .bar2 input, .bar2 select { font:inherit; padding:4px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); }
+tr.on td { background:var(--blue-bg); }
 .dz .bar2 label { display:flex; gap:6px; align-items:center; font-size:14px; color:var(--muted); }
 .dz .bar2 input[type=search] { width:11em; } .dz .bar2 input[type=number] { width:5em; }
 .dz table { border-collapse:collapse; width:100%; font-size:14px; }
@@ -370,6 +372,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
     <button data-view="cache" class="sub">查重缓存</button>
     <button data-view="sonnet" class="sub">Sonnet 复核</button>
     <button data-view="ms" class="sub">妙手图</button>
+    <button data-view="admin" class="sub">用户与计费</button>
   </nav>
   <main id="main"><div class="empty">加载中…</div></main>
 </div>
@@ -2146,6 +2149,142 @@ async function msDecide(button) {
   } catch (e) { alert("保存失败：" + e.message); card.querySelectorAll(".quick button").forEach(b => { b.disabled = false; }); }
 }
 
+// ---- 用户与计费: customers, their people and keys, points, what a picture costs ------------------
+// Only with an admin's own key (asked for once, kept in this browser): the page's shared passcode
+// does not open it. Money is taken outside the system; the owner adds the points here and every
+// movement of a balance is kept (lg_ledger).
+const ROLES = { admin: "管理员", owner: "客户老板", staff: "客户员工", reviewer: "内部复查员" };
+const LEDGER = { topup: "充值", charge: "扣点", refund: "退回", adjust: "调整", trial: "试用" };
+const az = { data: null, open: null, detail: null, key: "" };
+try { az.key = localStorage.getItem("lg_admin_key") || ""; } catch (e) {}
+async function adminCall(op, body) {
+  if (!az.key) {
+    az.key = (prompt("请输入管理员钥匙（lgk_ 开头）") || "").trim();
+    try { localStorage.setItem("lg_admin_key", az.key); } catch (e) {}
+  }
+  try { return await api.call({ action: "admin", key: az.key, op, ...(body || {}) }); }
+  catch (e) {
+    if (/管理员的钥匙/.test(e.message)) { az.key = ""; try { localStorage.removeItem("lg_admin_key"); } catch (x) {} }
+    throw e;
+  }
+}
+const dayTimeOrDash = t => t ? new Date(t).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "–";
+function adminDetailHtml() {
+  const d = az.detail; if (!d || !d.account) return "";
+  const a = d.account, plans = (az.data.plans || []).filter(p => p.active);
+  const user = u => `<tr class="${u.status === "revoked" ? "muted" : ""}"><td><b>${esc(u.name)}</b></td><td>${ROLES[u.role] || esc(u.role)}</td>
+    <td>${u.status === "active" ? "在用" : "已停用"}</td><td>${dayTimeOrDash(u.last_used_at)}</td><td>${num(u.pictures_30d)}</td>
+    <td><button class="quiet" data-act="rekey" data-user="${u.id}">换一把钥匙</button>
+      ${u.status === "active" ? `<button class="quiet" data-act="revoke" data-user="${u.id}">停用</button>` : ""}</td></tr>`;
+  const led = l => `<tr><td>${dayTimeOrDash(l.at)}</td><td>${LEDGER[l.kind] || esc(l.kind)}</td><td class="n" style="color:${l.points < 0 ? "var(--red)" : "var(--green)"}">${l.points > 0 ? "+" : ""}${num(l.points)}</td>
+    <td class="n">${num(l.balance_after)}</td><td>${l.pictures ? num(l.pictures) + " 张" : ""}</td>
+    <td>${l.money != null ? esc(l.money + " " + (l.currency || "")) + (l.method ? " · " + esc(l.method) : "") : ""}</td>
+    <td>${esc(l.user_name || l.by || "")}</td><td class="wrap">${esc(l.note || "")}</td></tr>`;
+  const day = x => `<tr><td>${esc(String(x.day).slice(5))}</td><td>${num(x.pictures)}</td><td>${num(x.points)}</td></tr>`;
+  return `<div class="panel" id="azDetail"><div class="mhead"><h2 style="margin:0">${esc(a.name)} <span class="muted" style="font-weight:400">${a.kind === "house" ? "自己人，不扣点" : "客户"} · ${a.status === "active" ? "在用" : "已停用"} · 余额 <b>${num(a.balance)}</b> 点</span></h2>
+      <span><button class="quiet" data-act="status" data-status="${a.status === "active" ? "suspended" : "active"}">${a.status === "active" ? "停用这个客户" : "恢复这个客户"}</button>
+        <button class="quiet" data-act="close">收起</button></span></div>
+    <div class="two" style="margin-top:12px">
+      <div><h2>人和钥匙</h2><table><tr><th>名字</th><th>角色</th><th>状态</th><th>最后使用</th><th>近 30 天图片</th><th></th></tr>${d.users.map(user).join("") || `<tr><td colspan="6" class="muted">还没有人</td></tr>`}</table>
+        <div class="bar2" style="margin-top:10px"><input id="azUserName" placeholder="名字" style="width:120px">
+          <select id="azUserRole">${Object.entries(ROLES).filter(([k]) => a.kind === "house" || k === "owner" || k === "staff").map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
+          <button data-act="user">加一个人，发钥匙</button></div>
+        <div class="muted" style="margin-top:6px">钥匙只显示一次，发给本人填进插件。丢了就“换一把钥匙”，旧的立刻失效。</div></div>
+      <div><h2>${a.kind === "house" ? "自己人不用充值" : "充值 / 调整"}</h2>${a.kind === "house" ? "" : `
+        <div class="bar2"><select id="azPlan"><option value="">自己填点数</option>${plans.map(p => `<option value="${p.id}" data-points="${Number(p.points) + Number(p.bonus)}" data-price="${p.price}" data-currency="${esc(p.currency)}">${esc(p.name)}：${esc(p.price + " " + p.currency)} → ${num(Number(p.points) + Number(p.bonus))} 点</option>`).join("")}</select></div>
+        <div class="bar2" style="margin-top:6px"><input id="azPoints" type="number" placeholder="点数" style="width:110px">
+          <input id="azMoney" type="number" step="0.01" placeholder="收了多少钱" style="width:120px"><input id="azCurrency" value="CNY" style="width:60px">
+          <input id="azMethod" placeholder="怎么收的（微信…）" style="width:140px"></div>
+        <div class="bar2" style="margin-top:6px"><input id="azNote" placeholder="备注" style="width:260px">
+          <button data-act="topup">充值</button><button class="quiet" data-act="adjust" title="改错用：点数可以填负数，不记收款">调整</button></div>`}
+        <h2 style="margin-top:14px">每天用量（近 14 天）</h2><table><tr><th>日期</th><th>图片</th><th>点数</th></tr>${d.days.map(day).join("") || `<tr><td colspan="3" class="muted">还没有用过</td></tr>`}</table></div>
+    </div>
+    <h2 style="margin-top:14px">余额的每一笔变动（最近 60 笔）</h2>
+    <table><tr><th>时间</th><th>类型</th><th>点数</th><th>之后余额</th><th>图片</th><th>收款</th><th>谁</th><th>备注</th></tr>${d.ledger.map(led).join("") || `<tr><td colspan="8" class="muted">还没有</td></tr>`}</table></div>`;
+}
+function adminHtml() {
+  const d = az.data, b = d.billing, t = d.totals;
+  const tile = (cls, value, label, note) => `<div class="tile ${cls}"><b>${value}</b><span>${label}</span>${note ? `<small>${note}</small>` : ""}</div>`;
+  const customers = d.accounts.filter(a => a.kind === "customer");
+  const acct = a => `<tr data-act="open" data-id="${a.id}" style="cursor:pointer" class="${az.open === a.id ? "on" : ""}"><td><b>${esc(a.name)}</b>${a.kind === "house" ? ` <span class="muted">自己人</span>` : ""}</td>
+    <td>${a.status === "active" ? "在用" : `<span class="warntext">已停用</span>`}</td>
+    <td class="n">${a.kind === "house" ? "–" : `<b style="color:${a.low ? "var(--red)" : "inherit"}">${num(a.balance)}</b>${a.low ? " 余额低" : ""}`}</td>
+    <td class="n">${num(a.users)}</td><td class="n">${num(a.pictures_24h)}</td><td class="n">${num(a.pictures_30d)}</td><td class="n">${num(a.points_30d)}</td>
+    <td class="n">${num(a.bought)}</td><td>${dayTimeOrDash(a.last_topup)}</td><td>${dayTimeOrDash(a.last_used)}</td></tr>`;
+  const plan = p => `<tr class="${p.active ? "" : "muted"}"><td>${esc(p.name)}</td><td>${esc(p.price + " " + p.currency)}</td><td>${num(p.points)}</td><td>${num(p.bonus)}</td>
+    <td>${num(Number(p.points) + Number(p.bonus))}</td><td>${p.active ? "在卖" : "已下架"}</td>
+    <td><button class="quiet" data-act="plan_toggle" data-id="${p.id}">${p.active ? "下架" : "上架"}</button></td></tr>`;
+  return `<div><h2>用户与计费 <span class="muted" style="font-weight:400">你是 ${esc(d.me.name)} · 客户先付款给你，你在这里加点数 · 每判断一张图扣一次，同一个客户重复送的图不重复扣</span></h2><div class="tiles">
+      ${tile("", num(customers.length), "客户", `${num(customers.filter(a => a.low).length)} 个余额低`)}
+      ${tile("blue", num(t.balance), "客户手里还剩的点数")}
+      ${tile("", num(t.used_30d), "近 30 天用掉的点数")}
+      ${tile("green", (t.money_30d || []).map(m => esc(Number(m.money).toLocaleString() + " " + (m.currency || ""))).join(" · ") || "0", "近 30 天收款", `累计卖出 ${num(t.bought)} 点`)}
+    </div></div>
+    <div class="panel"><div class="mhead"><h2 style="margin:0">客户</h2><span class="bar2"><input id="azNewName" placeholder="新客户的名字" style="width:160px">
+        <label class="muted"><input type="checkbox" id="azNewHouse"> 自己人（不扣点）</label><button data-act="account">新建</button></span></div>
+      <table><tr><th>名字</th><th>状态</th><th>余额（点）</th><th>人数</th><th>近 24 小时图片</th><th>近 30 天图片</th><th>近 30 天点数</th><th>累计充值</th><th>最近充值</th><th>最近使用</th></tr>
+        ${d.accounts.map(acct).join("") || `<tr><td colspan="10" class="muted">还没有客户。先建一个，再给他加人、充值。</td></tr>`}</table>
+      <div class="muted" style="margin-top:6px">点一行看这个客户的人、钥匙、充值和每一笔变动。</div></div>
+    ${adminDetailHtml()}
+    <div class="two">
+      <div class="panel"><h2>计费设置</h2>
+        <div class="bar2"><label>一张图扣 <input id="azPpi" type="number" min="0" value="${b.points_per_image}" style="width:70px"> 点</label></div>
+        <div class="bar2" style="margin-top:6px"><label>余额不超过 <input id="azLow" type="number" min="0" value="${b.low_balance}" style="width:90px"> 点时提醒</label></div>
+        <div class="bar2" style="margin-top:6px"><label>新客户送 <input id="azTrial" type="number" min="0" value="${b.trial_points}" style="width:90px"> 点试用</label></div>
+        <div class="bar2" style="margin-top:6px"><label>图片记录保留 <input id="azKeep" type="number" min="1" value="${b.keep_days}" style="width:70px"> 天</label> <span class="muted">（只是记下期限，自动清理还没有做）</span></div>
+        <div style="margin-top:8px"><button data-act="billing">保存设置</button> <span class="muted">${b.updated_by ? `上次 ${esc(b.updated_by)} 改于 ${dayTimeOrDash(b.updated_at)}` : ""}</span></div></div>
+      <div class="panel"><h2>充值档位（套餐）</h2>
+        <table><tr><th>名字</th><th>价格</th><th>点数</th><th>赠送</th><th>到账</th><th>状态</th><th></th></tr>${d.plans.map(plan).join("") || `<tr><td colspan="7" class="muted">还没有档位。没有档位也能充值，自己填点数就行。</td></tr>`}</table>
+        <div class="bar2" style="margin-top:10px"><input id="azPlanName" placeholder="名字，如 入门" style="width:110px"><input id="azPlanPrice" type="number" step="0.01" placeholder="价格" style="width:80px">
+          <input id="azPlanCurrency" value="CNY" style="width:55px"><input id="azPlanPoints" type="number" placeholder="点数" style="width:90px">
+          <input id="azPlanBonus" type="number" placeholder="赠送" style="width:80px"><button data-act="plan">加一档</button></div></div>
+    </div>`;
+}
+async function loadAdmin() {
+  if (view !== "admin") return;
+  try {
+    az.data = await adminCall("overview");
+    az.detail = az.open ? await adminCall("account", { id: az.open }) : null;
+  } catch (e) { $("#main").innerHTML = `<div class="empty">打不开：${esc(e.message)}<br><button id="azRetry" style="margin-top:10px">重新输入钥匙</button></div>`;
+    const r = $("#azRetry"); if (r) r.onclick = loadAdmin; return; }
+  if (view !== "admin") return;
+  $("#main").innerHTML = adminHtml();
+  const pl = $("#azPlan"); if (pl) pl.onchange = () => { const o = pl.selectedOptions[0];
+    if (o && o.value) { $("#azPoints").value = o.dataset.points; $("#azMoney").value = o.dataset.price; $("#azCurrency").value = o.dataset.currency; } };
+}
+function showKey(name, key) {
+  $("#sheet").innerHTML = `<div class="box" style="max-width:560px"><h3>${esc(name)} 的钥匙</h3><div class="muted">只显示这一次。复制后发给本人，填进插件的“设置口令”。</div>
+    <div class="raw" style="margin:12px 0;font-size:15px;user-select:all;overflow-wrap:anywhere">${esc(key)}</div><button id="azCopyKey">复制</button></div>`;
+  $("#sheet").classList.add("show");
+  $("#azCopyKey").onclick = () => copy(key, "钥匙");
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest && e.target.closest("#main [data-act]");
+  if (!b || view !== "admin") return;
+  const act = b.dataset.act, val = id => { const x = $("#" + id); return x ? x.value.trim() : ""; };
+  try {
+    if (act === "open") { az.open = az.open === Number(b.dataset.id) ? null : Number(b.dataset.id); }
+    else if (act === "close") { az.open = null; }
+    else if (act === "account") { const r = await adminCall("account_create", { name: val("azNewName"), kind: $("#azNewHouse").checked ? "house" : "customer" }); az.open = r.id; toast("已新建"); }
+    else if (act === "status") { if (!confirm(b.dataset.status === "suspended" ? "停用这个客户？他所有人的钥匙立刻不能用，余额保留。" : "恢复这个客户？")) return;
+      await adminCall("account_status", { id: az.open, status: b.dataset.status }); }
+    else if (act === "user") { const name = val("azUserName"); const r = await adminCall("user_create", { account: az.open, name, role: val("azUserRole") }); await loadAdmin(); showKey(name, r.key); return; }
+    else if (act === "rekey") { if (!confirm("换一把新钥匙？旧钥匙立刻失效。")) return; const r = await adminCall("user_rekey", { user: Number(b.dataset.user) }); await loadAdmin(); showKey("这个人", r.key); return; }
+    else if (act === "revoke") { if (!confirm("停用这个人的钥匙？")) return; await adminCall("user_revoke", { user: Number(b.dataset.user) }); }
+    else if (act === "topup" || act === "adjust") {
+      const points = Number(val("azPoints")); if (!points) { toast("先填点数"); return; }
+      if (!confirm(`${act === "topup" ? "充值" : "调整"} ${points} 点？`)) return;
+      const r = await adminCall("topup", { account: az.open, points, kind: act, money: act === "topup" ? val("azMoney") : "", currency: val("azCurrency"),
+        method: val("azMethod"), plan: act === "topup" ? val("azPlan") : "", note: val("azNote") });
+      toast(`已${act === "topup" ? "充值" : "调整"}，余额 ${num(r.balance)} 点`); }
+    else if (act === "billing") { await adminCall("billing_save", { points_per_image: val("azPpi"), low_balance: val("azLow"), trial_points: val("azTrial"), keep_days: val("azKeep") }); toast("已保存"); }
+    else if (act === "plan") { await adminCall("plan_save", { name: val("azPlanName"), price: val("azPlanPrice"), currency: val("azPlanCurrency"), points: val("azPlanPoints"), bonus: val("azPlanBonus") }); toast("已加一档"); }
+    else if (act === "plan_toggle") { const p = az.data.plans.find(x => x.id === Number(b.dataset.id)); await adminCall("plan_save", { ...p, active: !p.active }); }
+    else return;
+    await loadAdmin();
+  } catch (err) { alert("没有做成：" + err.message); }
+});
+
 function setView(v) {
   view = v;
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
@@ -2154,6 +2293,7 @@ function setView(v) {
   if (v === "dash") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshDashboard(); }
   else if (v === "designs") { loadDesigns(); watchCollect(); }
   else if (v === "sonnet") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshSonnet(); }
+  else if (v === "admin") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; loadAdmin(); }
   else if (v === "ms") { mz.items = []; $("#main").innerHTML = `<div class="empty">加载中…</div>`; loadMs(); refreshMsLive(); }
   else if (v === "cache") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshCache(); }
   else if (v === "machines") { mView = null; $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshMachinesPage(); }
