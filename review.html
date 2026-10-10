@@ -71,7 +71,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 #q { width:260px; max-width:100%; }
 .reviewed { font-size:14px; color:var(--blue); background:var(--blue-bg); padding:4px 10px; border-radius:6px; display:inline-block; margin-left:6px; }
 .shell { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; }
-.side { display:flex; flex-direction:column; gap:2px; width:148px; padding:20px 0 20px 14px; position:sticky; top:0; }
+.side { display:flex; flex-direction:column; gap:2px; width:160px; padding:20px 0 20px 14px; position:sticky; top:0; }
 .side[hidden] { display:none; }
 .side button { text-align:left; border-color:transparent; background:none; color:var(--muted); }
 .side button[hidden] { display:none; }
@@ -81,17 +81,45 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 @media (max-width:820px) { .shell { grid-template-columns:minmax(0,1fr); }
   .side { flex-direction:row; flex-wrap:wrap; width:auto; position:static; padding:10px 16px 0; }
   .side button.sub { margin-left:0; } }
-.pwrap { grid-column:1/-1; display:grid; grid-template-columns:216px minmax(0,1fr); gap:18px; align-items:start; }
-.pwrap > .dash { grid-column:auto; }
-.pnav { display:flex; flex-direction:column; gap:2px; position:sticky; top:12px; max-height:calc(100vh - 24px); overflow:auto; }
-.pnav .grp { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:var(--muted); margin:14px 10px 4px; }
-.pnav button { display:flex; justify-content:space-between; gap:8px; text-align:left; font-size:14px; border-color:transparent; background:none; color:var(--muted); }
-.pnav button.sub { padding-left:22px; font-size:13px; }
-.pnav button:hover { color:var(--fg); }
-.pnav button.on { border-color:var(--line); background:var(--card); color:var(--fg); font-weight:600; }
-.pnav button .n { font-variant-numeric:tabular-nums; font-weight:400; }
-tr.plink { cursor:pointer; } tr.plink:hover td { color:var(--blue); }
-@media (max-width:820px) { .pwrap { grid-template-columns:minmax(0,1fr); } .pnav { position:static; max-height:none; } }
+.side #printsNav { display:flex; flex-direction:column; gap:2px; }
+.side #printsNav[hidden] { display:none; }
+.side button.sub2 { margin-left:22px; font-size:14px; white-space:nowrap; display:flex; justify-content:space-between; gap:6px; padding-top:5px; padding-bottom:5px; }
+.side button.sub2 .n { font-weight:400; font-variant-numeric:tabular-nums; color:var(--muted); }
+.prints { gap:16px; }
+.phead { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 12px; margin-bottom:12px; }
+.phead h3 { margin:0; font-size:16px; font-weight:600; color:var(--fg); }
+.phead.top { margin-bottom:0; } .phead.top h2 { margin:0; font-size:24px; font-weight:700; color:var(--fg); letter-spacing:-.3px; }
+.phead.top .read { margin-left:auto; font-size:13px; }
+.phead.big { margin:6px 0 0; } .phead.big h3 { font-size:20px; } .phead.big b { font-size:20px; font-variant-numeric:tabular-nums; }
+.pstack { display:flex; gap:3px; height:28px; }
+.pstack button { padding:0; border:0; border-radius:6px; min-width:6px; cursor:pointer; } .pstack button:hover { filter:brightness(.92); }
+.plegend { display:flex; flex-wrap:wrap; gap:6px 10px; margin-top:12px; }
+.plegend button { display:flex; align-items:baseline; gap:8px; border:0; background:none; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:14px; }
+.plegend button:hover, .pbar:hover { background:var(--bg); }
+.plegend i { width:10px; height:10px; border-radius:3px; align-self:center; }
+.plegend b { font-size:18px; font-variant-numeric:tabular-nums; } .plegend em { font-style:normal; color:var(--muted); font-size:13px; }
+.pcols { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; align-items:start; }
+.pbig { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 14px; margin-bottom:16px; }
+.pbig b { font-size:44px; line-height:1; letter-spacing:-1px; color:var(--green); font-variant-numeric:tabular-nums; } .pbig span { color:var(--muted); font-size:14px; }
+.psub { font-size:13px; color:var(--muted); margin-bottom:4px; }
+.pbar { display:grid; grid-template-columns:8.5em minmax(40px,1fr) 3.2em 3.2em; gap:10px; align-items:center; width:100%; border:0; background:none;
+        padding:7px 8px; border-radius:8px; cursor:pointer; font-size:14px; text-align:left; }
+.pbar .b { height:10px; border-radius:5px; background:var(--bg); overflow:hidden; } .pbar .b i { display:block; height:100%; border-radius:5px; }
+.pbar .c { text-align:right; font-weight:600; font-variant-numeric:tabular-nums; } .pbar .p { text-align:right; color:var(--muted); font-size:13px; font-variant-numeric:tabular-nums; }
+.dash table.ptable th, .dash table.ptable td { text-align:left; padding:9px 12px 9px 0; }
+.pnote summary { cursor:pointer; color:var(--muted); font-size:14px; } .pnote p { margin:10px 0 0; font-size:14px; line-height:1.6; color:var(--muted); } .pnote p b { color:var(--fg); font-weight:600; }
+.pchips { display:flex; flex-wrap:wrap; gap:8px; }
+.pchips button { border-radius:999px; padding:6px 14px; font-size:14px; cursor:pointer; } .pchips button b { font-weight:400; color:var(--muted); margin-left:2px; font-variant-numeric:tabular-nums; }
+.pchips button.on { background:var(--fg); color:var(--bg); border-color:var(--fg); } .pchips button.on b { color:inherit; opacity:.7; }
+.pgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; } .pgrid.duo { grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); }
+.pcard { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+.pcard .pics { display:grid; } .pcard.duo .pics { grid-template-columns:1fr 1fr; gap:1px; background:var(--line); }
+.pcard img, .pcard .none { display:block; width:100%; aspect-ratio:1; object-fit:contain; background:#fff; } .pcard img.cut { background:#555; }
+.pcard .none { display:grid; place-items:center; color:#999; font-size:13px; background:var(--bg); }
+.pcard .t { padding:10px 12px 2px; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pcard .s { display:flex; flex-wrap:wrap; gap:2px 10px; padding:0 12px 10px; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.pcard .s .tag { color:var(--amber); }
+.pmore { display:flex; align-items:center; gap:12px; justify-content:center; padding:8px 0 24px; } .pmore button { padding:8px 22px; border-radius:999px; cursor:pointer; }
 .moved { margin:0 0 8px; padding:8px 10px; border-radius:8px; background:var(--amber-bg); font-size:14px; }
 /* the record wall's filters */
 .filters { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin-bottom:12px; }
@@ -385,6 +413,7 @@ tr.on td { background:var(--blue-bg); }
     <button data-view="sonnet" class="sub">Sonnet 复核</button>
     <button data-view="ms" class="sub">妙手图</button>
     <button data-view="prints" class="sub">印刷稿</button>
+    <div id="printsNav" hidden></div>
     <button data-view="admin" class="sub" hidden>用户与计费</button>
   </nav>
   <main id="main"><div class="empty">加载中…</div></main>
@@ -1890,110 +1919,117 @@ async function refreshCache() {
 }
 
 // ---- Print files out of main pictures: cut out first, redrawn on UV1 when that cannot be done ----
-// Every product of the catalogue is under one heading of the list on the left. The counts are read
-// once when the page is opened and when 刷新 is pressed; a heading's pictures are read when it is
-// opened, 96 at a time, and kept until 刷新. Nothing here changes by the second.
-let printsData = null, printsCat = "overview", printsCache = {};
-const PRINT_SKIP = { "a photograph, not a mockup": "是实拍照片，不是样机图", "not a black shirt": "不是黑色 T 恤", "print all over": "满版印花",
+// Every product of the catalogue is in one of four groups; the groups are listed under 印刷稿 in the
+// page's own list on the left, and a group's reasons are the chips above its pictures. The counts
+// are read once when the page is opened and when 刷新 is pressed; a group's pictures are read when
+// it is opened, 96 at a time, and kept until 刷新. Nothing here changes by the second.
+let printsData = null, printsCat = "overview", printsWhy = null, printsCache = {};
+const PRINT_SKIP = { "a photograph, not a mockup": "实拍照片", "not a black shirt": "不是黑色 T 恤", "print all over": "满版印花",
   "not a men's T-shirt": "不是男款 T 恤", "no print": "没有印花", "not a short-sleeved T-shirt": "不是短袖 T 恤" };
-const PRINT_WHY = [
-  ["没有白底", "主图是场景图：衣服挂在房间里、模特穿着、铺在地板上。抠图要靠白底把衣服和背景分开，这里分不开。"],
-  ["抠出的范围几乎是整件衣服", "程序把大半件衣服都当成了印花。多数是水洗做旧的面料，布面本身深浅不匀；也有印花确实铺满的。"],
-  ["衣服不是纯色", "衣服本身有几种颜色（拼色、扎染、条纹），或者印花占满了整件，分不出哪里是布、哪里是印花。"],
-  ["画面里不止一件", "主图里有两件以上的东西（正反面并排、多件装、旁边摆着配饰），不知道该抠哪一件。"],
-  ["印花顶到衣服边", "抠出来了，但自检发现印花贴着衣服边缘，很可能被切掉了一部分，所以不算成功。"],
+const PRINT_WHY = [   // what the cut-out said (its first words), a short name, and what it means
+  ["没有白底", "没有白底", "主图是场景图：衣服挂在房间里、模特穿着、铺在地板上。抠图要靠白底把衣服和背景分开，这里分不开。"],
+  ["抠出的范围几乎是整件衣服", "范围像整件衣服", "程序把大半件衣服都当成了印花。多数是水洗做旧的面料，布面本身深浅不匀；也有印花确实铺满的。"],
+  ["衣服不是纯色", "衣服不是纯色", "衣服本身有几种颜色（拼色、扎染、条纹），或者印花占满了整件，分不出哪里是布、哪里是印花。"],
+  ["画面里不止一件", "不止一件东西", "主图里有两件以上的东西（正反面并排、多件装、旁边摆着配饰），不知道该抠哪一件。"],
+  ["印花顶到衣服边", "印花顶到衣服边", "抠出来了，但自检发现印花贴着衣服边缘，很可能被切掉了一部分，所以不算成功。"],
 ];
-const printShort = w => String(w || "").replace(/（.*?）/g, "");
-function printsCats(d) {
-  const tried = Number(d.tried || 0), cut = Number(d.cut || 0), noMain = Number(d.no_main || 0);
-  const fails = (d.why || []).filter(w => w.why !== "抠成功"), skipped = d.skipped || [];
-  const skippedN = skipped.reduce((a, w) => a + Number(w.n), 0);
-  const explain = w => (PRINT_WHY.find(x => String(w).startsWith(x[0])) || [0, ""])[1];
+const printWhy = w => PRINT_WHY.find(x => String(w || "").startsWith(x[0])) || [w, String(w || "").replace(/（.*?）/g, ""), ""];
+function printsGroups(d) {
+  const tried = Number(d.tried || 0), cut = Number(d.cut || 0);
+  const fails = (d.why || []).filter(w => w.why !== "抠成功").map(w => ({ why: w.why, n: Number(w.n), label: printWhy(w.why)[1], note: printWhy(w.why)[2] }));
+  const skips = (d.skipped || []).map(w => ({ why: w.why, n: Number(w.n), label: PRINT_SKIP[w.why] || w.why, note: "" }));
   return [
     { key: "overview", label: "总览" },
-    { grp: "要做稿的商品", n: Number(d.products || 0) + noMain },
-    { key: "cut", kind: "cut", label: "抠成功", n: cut, note: "左边是主图，右边是抠出的印花（深色格子 = 透明）。抠出的印花放大到印刷尺寸后就是印刷稿。" },
-    { key: "failed", kind: "failed", label: "抠不了，转重画", n: tried - cut, note: "程序自己说出了原因，这些主图转给 UV1 的改图模型重画。按原因排在一起；左边可以只看一种原因。" },
-    ...fails.map(w => ({ key: "failed:" + w.why, kind: "failed", why: w.why, sub: true, label: printShort(w.why), n: Number(w.n), note: explain(w.why) + " 下一步：转 UV1 重画。" })),
-    { key: "no_main", kind: "no_main", label: "还没有主图", n: noMain, note: "目录里要做稿，但采集时没有拿到主图，所以还没法试抠图。" },
-    { grp: "不做稿的商品", n: skippedN },
-    { key: "skipped", kind: "skipped", label: "全部", n: skippedN, note: "采集那一步已经标好这些商品不做印刷稿，不进抠图，也不算在成功率里。按原因排在一起。" },
-    ...skipped.map(w => ({ key: "skipped:" + w.why, kind: "skipped", why: w.why, sub: true, label: PRINT_SKIP[w.why] || w.why, n: Number(w.n), note: "采集那一步标的原因：" + (PRINT_SKIP[w.why] || w.why) + "。不做印刷稿。" })),
+    { key: "cut", label: "抠成功", n: cut, color: "var(--green)", note: "左边是主图，右边是抠出的印花。抠出的印花放大到印刷尺寸后就是印刷稿。" },
+    { key: "failed", label: "抠不了", n: tried - cut, color: "var(--amber)", whys: fails, note: "程序自己说出了原因；这些主图转给 UV1 的改图模型重画。" },
+    { key: "no_main", label: "没有主图", n: Number(d.no_main || 0), color: "#9a9aa2", note: "目录里要做稿，但采集时没有拿到主图，还没法试抠图。" },
+    { key: "skipped", label: "不做稿", n: (skips || []).reduce((a, w) => a + w.n, 0), color: "#cfcfd6", whys: skips, note: "采集那一步已经标好这些商品不做印刷稿：不进抠图，也不算在成功率里。" },
   ];
 }
-function printsOverview(d) {
-  const tile = (cls, value, label, note) => `<div class="tile ${cls}"><b>${value}</b><span>${label}</span>${note ? `<small>${note}</small>` : ""}</div>`;
-  const tried = Number(d.tried || 0), cut = Number(d.cut || 0), all = d.all_pictures || {};
-  const NAME = { x2: "抠图 + 普通放大", real: "抠图 + 新放大（现在的做法）", redraw: "UV1 重画" };
-  const trial = t => `<tr class="${t.method === "real" ? "cur" : ""}"><td>${NAME[t.method] || esc(t.method)}</td><td>${num(t.pictures)}</td>
-    <td>${Number(t.sharp).toFixed(0)}%</td><td><b>${Number(t.fine).toFixed(0)}%</b></td><td><b>${Number(t.same).toFixed(3)}</b></td><td>约 ${Number(t.seconds)} 秒</td><td class="muted">${esc(t.note || "")}</td></tr>`;
-  const why = w => `<tr data-cat="${w.why === "抠成功" ? "cut" : esc("failed:" + w.why)}" class="plink"><td>${w.why === "抠成功" ? `<span class="pill pass">抠成功</span>` : esc(w.why)}</td><td>${num(w.n)}</td><td>${pct(w.n, tried)}</td>
-    <td>${w.why === "抠成功" ? "抠出的印花放大后就是印刷稿" : "转 UV1 重画"}</td><td class="muted">看图 ›</td></tr>`;
-  const skip = w => `<tr data-cat="${esc("skipped:" + w.why)}" class="plink"><td>${esc(PRINT_SKIP[w.why] || w.why)}</td><td>${num(w.n)}</td><td>${pct(w.n, d.catalog)}</td><td class="muted">看图 ›</td></tr>`;
-  return `<div class="panel hero">
-      <div class="mhead"><b class="nm">印刷稿</b><span class="muted">从 Temu 主图做出印刷稿：先抠图，抠不了的再让 UV1 重画</span></div>
-      <div class="mrow"><span class="k">抠图</span><span>平铺、纯色衣服、白底的主图：印花就是和衣服颜色不一样的那部分，像素原样取下来，文字不会变。不用模型，不占显卡。</span></div>
-      <div class="mrow"><span class="k">抠不了</span><span>程序自己说出原因（没有白底、衣服不是纯色、范围像整件衣服、自检发现漏抠……），这张主图就转给 UV1 的改图模型重画。</span></div>
-      <div class="mrow"><span class="k">放大</span><span>抠出的印花用针对压缩图训练的放大模型放到印刷尺寸（180 dpi）。清晰度用下面的数字衡量，是和厂里真稿对齐后比出来的。</span></div>
+function printsOverview(d, groups) {
+  const tried = Number(d.tried || 0), cut = Number(d.cut || 0), all = d.all_pictures || {}, total = Number(d.catalog || 0);
+  const parts = groups.filter(g => g.key !== "overview");
+  const NAME = { x2: "抠图 + 普通放大", real: "抠图 + 新放大", redraw: "UV1 重画" };
+  const trial = t => `<tr class="${t.method === "real" ? "cur" : ""}" title="${esc(t.note || "")}"><td>${NAME[t.method] || esc(t.method)}${t.method === "real" ? ` <span class="pill idle">现在的做法</span>` : ""}</td>
+    <td>${Number(t.sharp).toFixed(0)}%</td><td><b>${Number(t.fine).toFixed(0)}%</b></td><td><b>${Number(t.same).toFixed(3)}</b></td><td>约 ${Number(t.seconds)} 秒</td></tr>`;
+  const bars = (g, of) => { const top = Math.max(1, ...g.whys.map(w => w.n));
+    return g.whys.map(w => `<button class="pbar" data-pcat="${g.key}" data-pwhy="${esc(w.why)}"><span class="l">${esc(w.label)}</span>
+      <span class="b"><i style="width:${(100 * w.n / top).toFixed(1)}%;background:${g.color}"></i></span><span class="c">${num(w.n)}</span><span class="p">${pct(w.n, of)}</span></button>`).join(""); };
+  const failed = groups.find(g => g.key === "failed"), skipped = groups.find(g => g.key === "skipped");
+  return `<div class="panel">
+      <div class="phead"><h3>目录里的 ${num(total)} 个商品</h3><span class="muted">点一段看这一组的图</span></div>
+      <div class="pstack">${parts.map(g => `<button data-pcat="${g.key}" title="${esc(g.label)} ${num(g.n)}" style="flex:${Math.max(g.n, total * 0.02)};background:${g.color}"></button>`).join("")}</div>
+      <div class="plegend">${parts.map(g => `<button data-pcat="${g.key}"><i style="background:${g.color}"></i><span>${esc(g.label)}</span><b>${num(g.n)}</b><em>${pct(g.n, total)}</em></button>`).join("")}</div>
     </div>
-    <div><h2>现在</h2><div class="tiles">
-      ${tile("", num(d.products), "目录里要做稿的商品", `目录共 ${num(d.catalog)} 个${Number(d.no_main) ? ` · 另有 ${num(d.no_main)} 个还没有主图` : ""}`)}
-      ${tile("", num(tried), "已经试过抠图", `还没试 ${num(Math.max(0, Number(d.products || 0) - tried))} 个${d.last ? " · 最近一次 " + new Date(d.last).toLocaleString("zh-CN", { hour12: false }) : ""}`)}
-      ${tile("green", pct(cut, tried), "抠图成功率", `${num(cut)} 个抠成`)}
-      ${tile("amber", num(tried - cut), "转 UV1 重画", pct(tried - cut, tried))}
-      ${tile("", d.seconds == null ? "–" : Number(d.seconds) + " 秒", "抠一张平均用时", "不含放大")}
-    </div></div>
-    <div class="panel"><div class="mhead"><h2 style="margin:0">要做稿的商品：去向和原因</h2><span class="muted">点一行看这一类的全部图</span></div>
-      ${(d.why || []).length ? `<table><tr><th>结果</th><th>商品数</th><th>占比</th><th>下一步</th><th></th></tr>${d.why.map(why).join("")}</table>` : `<span class="muted">还没有跑过。</span>`}</div>
-    <div class="panel"><div class="mhead"><h2 style="margin:0">清晰度：各种做法和厂里真稿比</h2>
-        <span class="muted">同一批主图 · 100% = 和真稿一样 · “细节”看排线、毛发、细线糊不糊 · “相似”看内容有没有走样（1 = 同一张图）</span></div>
-      ${(d.trials || []).length ? `<table><tr><th>做法</th><th>张数</th><th>边缘清晰</th><th>细节</th><th>相似</th><th>每张</th><th>说明</th></tr>${d.trials.map(trial).join("")}</table>`
-        : `<span class="muted">还没有测量。scripts/cutout_measure.py 测完后用 scripts/prints_run.py --trials 写上来。</span>`}</div>
-    <div class="panel"><div class="mhead"><h2 style="margin:0">不做稿的商品</h2><span class="muted">采集那一步已经标好，不进抠图，也不算在成功率里 · 点一行看图</span></div>
-      ${(d.skipped || []).length ? `<table><tr><th>原因</th><th>商品数</th><th>占目录</th><th></th></tr>${d.skipped.map(skip).join("")}</table>` : `<span class="muted">没有。</span>`}
-      ${Number(all.tried) ? `<div class="muted" style="margin-top:8px">另：第一次是对全部采集到的主图跑的（含不做稿的），${num(all.tried)} 张里抠成 ${num(all.cut)} 张（${pct(all.cut, all.tried)}）。那个数的分母不对，以上面按商品的为准。</div>` : ""}</div>`;
+    <div class="pcols">
+      <div class="panel">
+        <div class="phead"><h3>抠图结果</h3><span class="muted">要做稿、有主图的 ${num(tried)} 个</span></div>
+        <div class="pbig"><b>${pct(cut, tried)}</b><span>抠成功 ${num(cut)} 个 · 转重画 ${num(tried - cut)} 个 · 每张 ${d.seconds == null ? "–" : Number(d.seconds)} 秒</span></div>
+        <div class="psub">抠不了的原因</div>${failed.whys.length ? bars(failed, tried) : `<span class="muted">没有。</span>`}
+      </div>
+      <div class="panel">
+        <div class="phead"><h3>不做稿的原因</h3><span class="muted">${num(skipped.n)} 个，采集时标的</span></div>
+        ${skipped.whys.length ? bars(skipped, total) : `<span class="muted">没有。</span>`}
+      </div>
+    </div>
+    <div class="panel"><div class="phead"><h3>清晰度</h3><span class="muted">和厂里真稿对齐后比 · 100% = 和真稿一样 · 相似 1 = 同一张图</span></div>
+      ${(d.trials || []).length ? `<table class="ptable"><tr><th>做法</th><th>边缘清晰</th><th>细节</th><th>相似</th><th>每张用时</th></tr>${d.trials.map(trial).join("")}</table>
+        <div class="muted" style="margin-top:8px;font-size:13px">${num(d.trials[0].pictures)} 张都有真稿的主图，取中位数。样本少，只能看方向。</div>`
+        : `<span class="muted">还没有测量。</span>`}</div>
+    <details class="panel pnote"><summary>这一页的数是怎么来的</summary>
+      <p><b>抠图</b>：平铺、纯色衣服、白底的主图，印花就是和衣服颜色不一样的那部分，像素原样取下来，文字不会变。不用模型，不占显卡。</p>
+      <p><b>抠不了</b>：程序自己说出原因，这张主图就转给 UV1 的改图模型重画。</p>
+      <p><b>放大</b>：抠出的印花用针对压缩图训练的放大模型放到印刷尺寸（180 dpi）。</p>
+      ${Number(all.tried) ? `<p><b>旧数</b>：第一次是对全部采集到的主图跑的（含不做稿的），${num(all.tried)} 张里抠成 ${num(all.cut)} 张（${pct(all.cut, all.tried)}）。分母不对，以按商品的为准。</p>` : ""}
+      ${d.last ? `<p><b>最近一次跑</b>：${new Date(d.last).toLocaleString("zh-CN", { hour12: false })}</p>` : ""}</details>`;
 }
-function printsList(cat) {
-  const c = printsCache[cat.key] || { rows: [] }, left = Math.max(0, cat.n - c.rows.length);
-  const cap = r => `<div class="cap"><div class="what">${cat.kind === "cut" ? `抠成功 · 印花 ${r.px ? r.px[0] + "×" + r.px[1] : ""} 像素` : cat.kind === "no_main" ? "还没有主图"
-      : cat.kind === "failed" ? "抠不了：" + esc(printShort(r.why)) : "不做稿：" + esc(PRINT_SKIP[r.why] || r.why || "")}</div>
-    <div class="when" title="${esc(r.title || "")}">${esc(String(r.title || "").slice(0, 46))}</div>
-    <div class="when">商品 ${esc(r.goods_id)}${r.sold != null ? " · 卖出 " + esc(r.sold) : ""}${r.checks && r.checks.dropped ? ` · 去掉水印/领标 ${r.checks.dropped} 处` : ""}</div></div>`;
-  const card = r => cat.kind === "cut"
-    ? `<div class="dcard pass"><div style="display:flex;gap:2px;padding:0"><img src="${esc(r.source)}" loading="lazy" alt="" style="width:50%"><img src="${esc(r.thumb_url || "")}" loading="lazy" alt="" style="width:50%;background:#555"></div>${cap(r)}</div>`
-    : `<div class="dcard ${cat.kind === "failed" ? "review" : ""}">${r.source ? `<img src="${esc(r.source)}" loading="lazy" alt="">` : `<div class="noimg">没有主图</div>`}${cap(r)}</div>`;
-  return `<div class="panel hero"><div class="mhead"><b class="nm">${esc(cat.label)}</b><span class="pill idle">${num(cat.n)} 个</span>
-        <span class="muted">已显示 ${num(c.rows.length)} 个</span></div>
-      <div style="margin-top:8px;line-height:1.6">${esc(cat.note || "")}</div></div>
-    <div class="panel">
-      <div class="feed mfeed">${c.rows.map(card).join("") || `<span class="muted">${c.err ? esc(c.err) : c.loaded ? "这一类没有商品。" : "加载中…"}</span>`}</div>
-      ${c.loaded && left > 0 && !c.end ? `<div style="margin-top:12px"><button id="printsMore">再看 96 个（还有 ${num(left)} 个没显示）</button></div>` : ""}
-      ${c.loaded && c.rows.length && (left <= 0 || c.end) ? `<div class="muted" style="margin-top:12px">这一类的 ${num(c.rows.length)} 个都在上面了。</div>` : ""}</div>`;
+function printsList(g) {
+  const why = g.whys && g.whys.find(w => w.why === printsWhy) || null, n = why ? why.n : g.n;
+  const c = printsCache[g.key + ":" + (why ? why.why : "")] || { rows: [] }, left = Math.max(0, n - c.rows.length);
+  const tag = r => why ? "" : g.key === "failed" ? `<span class="tag">${esc(printWhy(r.why)[1])}</span>` : g.key === "skipped" ? `<span class="tag">${esc(PRINT_SKIP[r.why] || r.why || "")}</span>` : "";
+  const card = r => `<div class="pcard${g.key === "cut" ? " duo" : ""}">
+      <div class="pics">${r.source ? `<img src="${esc(r.source)}" loading="lazy" alt="">` : `<div class="none">没有主图</div>`}${g.key === "cut" ? `<img class="cut" src="${esc(r.thumb_url || "")}" loading="lazy" alt="">` : ""}</div>
+      <div class="t" title="${esc(r.title || "")}">${esc(r.title || "商品 " + r.goods_id)}</div>
+      <div class="s">${tag(r)}${r.sold != null ? `<span>卖出 ${esc(r.sold)}</span>` : ""}${g.key === "cut" && r.px ? `<span>印花 ${r.px[0]}×${r.px[1]}</span>` : ""}<span title="商品号">${esc(r.goods_id)}</span></div></div>`;
+  const chips = g.whys && g.whys.length ? `<div class="pchips"><button data-pcat="${g.key}" class="${why ? "" : "on"}">全部 <b>${num(g.n)}</b></button>
+      ${g.whys.map(w => `<button data-pcat="${g.key}" data-pwhy="${esc(w.why)}" class="${why && why.why === w.why ? "on" : ""}">${esc(w.label)} <b>${num(w.n)}</b></button>`).join("")}</div>` : "";
+  return `<div class="phead big"><h3>${esc(g.label)}${why ? " · " + esc(why.label) : ""}</h3><b>${num(n)}</b><span class="muted">个商品</span></div>
+    <div class="muted" style="margin-top:-8px">${esc(why && why.note || g.note || "")}</div>
+    ${chips}
+    <div class="pgrid${g.key === "cut" ? " duo" : ""}">${c.rows.map(card).join("") || `<span class="muted">${c.err ? esc(c.err) : c.loaded ? "这一组没有商品。" : "加载中…"}</span>`}</div>
+    ${c.loaded && left > 0 && !c.end ? `<div class="pmore"><button id="printsMore">再看 96 个</button><span class="muted">已显示 ${num(c.rows.length)} / ${num(n)}</span></div>` : ""}
+    ${c.loaded && c.rows.length && (left <= 0 || c.end) ? `<div class="pmore"><span class="muted">${num(c.rows.length)} 个都在上面了。</span></div>` : ""}`;
 }
 function printsPaint() {
   const d = printsData;
   if (!d || view !== "prints") return;
-  const cats = printsCats(d), cat = cats.find(c => c.key === printsCat) || cats[0];
-  const nav = cats.map(c => c.grp ? `<div class="grp">${esc(c.grp)}<span>${num(c.n)}</span></div>`
-    : `<button data-cat="${esc(c.key)}" class="${c.sub ? "sub " : ""}${c.key === cat.key ? "on" : ""}"><span>${esc(c.label)}</span>${c.n == null ? "" : `<span class="n">${num(c.n)}</span>`}</button>`).join("");
-  $("#main").innerHTML = `<div class="pwrap"><nav class="pnav">${nav}
-      <div class="muted" style="margin:14px 10px 0;font-size:12px">读取于 ${new Date(d.read_at).toLocaleTimeString("zh-CN", { hour12: false })}<br><button class="linkish" id="printsReload">刷新</button></div></nav>
-    <div class="dash">${cat.key === "overview" ? printsOverview(d) : printsList(cat)}</div></div>`;
+  const groups = printsGroups(d), g = groups.find(x => x.key === printsCat) || groups[0];
+  $("#printsNav").innerHTML = groups.map(x => `<button data-pcat="${x.key}" class="sub2${x.key === g.key ? " on" : ""}"><span>${esc(x.label)}</span>${x.n == null ? "" : `<span class="n">${num(x.n)}</span>`}</button>`).join("");
+  $("#printsNav").hidden = false;
+  $("#main").innerHTML = `<div class="dash prints">
+    <div class="phead top"><h2>印刷稿</h2><span class="muted">从 Temu 主图做出印刷稿：先抠图，抠不了的再让 UV1 重画</span>
+      <span class="muted read">读取于 ${new Date(d.read_at).toLocaleTimeString("zh-CN", { hour12: false })} <button class="linkish" id="printsReload">刷新</button></span></div>
+    ${g.key === "overview" ? printsOverview(d, groups) : printsList(g)}</div>`;
   $("#printsReload").onclick = refreshPrints;
-  document.querySelectorAll("#main [data-cat]").forEach(b => b.onclick = () => { printsCat = b.dataset.cat; printsPaint(); window.scrollTo(0, 0); });
-  if ($("#printsMore")) $("#printsMore").onclick = () => printsMore(cat);
-  if (cat.kind && !printsCache[cat.key]) printsMore(cat);
+  document.querySelectorAll("[data-pcat]").forEach(b => b.onclick = () => {
+    const moved = printsCat !== b.dataset.pcat;
+    printsCat = b.dataset.pcat; printsWhy = b.dataset.pwhy || null; printsPaint();
+    if (moved) window.scrollTo(0, 0);
+  });
+  const key = g.key + ":" + (g.whys && g.whys.some(w => w.why === printsWhy) ? printsWhy : "");
+  if ($("#printsMore")) $("#printsMore").onclick = () => printsMore(g.key, key);
+  if (g.key !== "overview" && !printsCache[key]) printsMore(g.key, key);
 }
-async function printsMore(cat) {
-  const c = printsCache[cat.key] || (printsCache[cat.key] = { rows: [] });
+async function printsMore(kind, key) {
+  const c = printsCache[key] || (printsCache[key] = { rows: [] });
   if (c.busy) return;
   c.busy = true; c.err = null;
   try {
-    const rows = (await api.printsRows(cat.kind, cat.why || null, c.rows.length)).rows || [];
+    const rows = (await api.printsRows(kind, key.slice(kind.length + 1) || null, c.rows.length)).rows || [];
     c.rows.push(...rows); c.loaded = true; c.end = !rows.length;
   } catch (err) { c.err = err.message; }
   c.busy = false;
-  if (printsCat === cat.key) printsPaint();
+  if (printsCat === kind) printsPaint();
 }
 async function refreshPrints() {
   if (view !== "prints") return;
@@ -2478,6 +2514,7 @@ function setView(v) {
   view = v;
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
   $("#q").hidden = v !== "review"; $("#stats").hidden = v !== "review"; $("#reviewer").hidden = v === "dash";
+  if (v !== "prints") $("#printsNav").hidden = true;
   clearTimeout(pollTimer);
   if (v === "dash") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshDashboard(); }
   else if (v === "designs") { loadDesigns(); watchCollect(); }
