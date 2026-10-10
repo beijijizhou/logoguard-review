@@ -118,8 +118,8 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 /* The list on the left, for every page (the owner, 2026-10-10: "左侧子导航栏还是有点差"): every entry the same height
    with its icon, one way to show where you are (blue), an open heading's own entries hang from a line under it, and
    only what waits for the owner carries a colour (an amber count). Icons are grey: colour is kept for states. */
-.side { gap:2px; width:244px; padding:16px 12px; font-size:14px; line-height:1.5; }
-.side button { display:flex; align-items:center; gap:10px; width:100%; height:36px; margin:0; padding:0 12px; border:1px solid transparent; border-radius:8px;
+.side { gap:2px; width:244px; padding:16px 12px; font-size:14px; line-height:1.5; max-height:100vh; overflow-y:auto; scrollbar-width:thin; }
+.side button { display:flex; flex:none; align-items:center; gap:10px; width:100%; height:36px; margin:0; padding:0 12px; border:1px solid transparent; border-radius:8px;
                background:none; color:var(--p-2); font-size:14px; font-weight:400; text-align:left; white-space:nowrap; }
 .side button .pic { color:var(--p-3); }
 .side button .lab { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
@@ -136,7 +136,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .side button.sub2 .n { font-size:12px; font-weight:400; font-variant-numeric:tabular-nums; color:var(--p-3); }
 .side button.sub2 .n.todo { height:20px; line-height:18px; padding:0 8px; border-radius:999px; background:var(--amber-bg); border:1px solid var(--amber-border); color:var(--amber-text); font-weight:500; }
 .side button.sub2.on .n:not(.todo) { color:var(--blue-text); }
-@media (max-width:820px) { .side { width:auto; padding:8px 12px 0; } .side button { width:auto; } .side button.sub { padding-left:12px; }
+@media (max-width:820px) { .side { width:auto; padding:8px 12px 0; max-height:none; overflow:visible; } .side button { width:auto; } .side button.sub { padding-left:12px; }
   .side #printsNav { flex-direction:row; flex-wrap:wrap; width:100%; margin:0; padding:0; border:0; } .side #printsNav .psep { display:none; } }
 /* the page */
 .prints { gap:24px; color:var(--p-fg); font-size:14px; line-height:1.5; }
@@ -158,6 +158,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .ptitle { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; margin-bottom:12px; }
 /* what the owner has to do: on top, amber */
 .pcall { display:flex; align-items:center; gap:12px; padding:12px 16px; border-radius:12px; background:var(--amber-bg); border:1px solid var(--amber-border); color:var(--amber-text); }
+.pcall.blue { background:var(--blue-bg); border-color:var(--blue-border); color:var(--blue-text); }
 .pcall > div { flex:1; display:flex; flex-direction:column; } .pcall b { font-size:16px; font-weight:600; } .pcall span { font-size:13px; }
 /* the one number */
 .pkey { display:flex; align-items:center; gap:16px; margin-bottom:16px; }
@@ -2160,6 +2161,8 @@ function printsOverview(d, groups) {
   const NAME = { x2: "抠图 + 普通放大", real: "抠图 + 新放大（现在的做法）", redraw: "UV1 重画" };
   return `${wait ? `<div class="pcall">${pic("clock", 20)}<div><b>有 ${num(wait)} 个等你确认</b><span>程序抠成的 ${num(waitCut)} 个，模型找到的 ${num(waitCand)} 个。看过的才算“能用”。</span></div>
         <button class="pbtn primary" data-pcat="pending">${pic("chevron-right")}去确认</button></div>` : ""}
+    ${Number(d.final) ? `<div class="pcall blue">${pic("printer", 20)}<div><b>已经放大成印刷稿的有 ${num(d.final)} 张</b><span>抠出的印花放大到印刷尺寸（1913 像素宽）。目前是试样。</span></div>
+        <button class="pbtn" data-pcat="final">${pic("chevron-right")}看这 ${num(d.final)} 张</button></div>` : ""}
     <div class="ppanel">
       <div class="pkey"><div class="pnum"><b>${num(okN)}</b><span>/ ${num(base)}</span></div>
         <div class="pkeytxt"><div>要做稿的 ${num(base)} 个商品里，确认能用的</div><div class="psmall">只算人看过、确认和主图一致的${h.last ? " · 最近一次确认 " + new Date(h.last).toLocaleString("zh-CN", { hour12: false }) : ""}</div></div>
