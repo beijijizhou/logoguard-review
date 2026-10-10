@@ -81,51 +81,102 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 @media (max-width:820px) { .shell { grid-template-columns:minmax(0,1fr); }
   .side { flex-direction:row; flex-wrap:wrap; width:auto; position:static; padding:10px 16px 0; }
   .side button.sub { margin-left:0; } }
-.side #printsNav { display:flex; flex-direction:column; gap:2px; }
+/* Print files page: the owner's page standard (UI.md). The five colours, each one meaning, as variables;
+   set here for this page and its entries in the list on the left, so that no other page changes. */
+.prints, #printsNav {
+  --p-bg:#F9F9FB; --p-card:#FFFFFF; --p-fg:#1C2024; --p-2:#60646C; --p-3:#8B8D98; --gray-bg:#F0F0F3; --gray-border:#D9D9E0; --gray-solid:#8B8D98; --gray-text:#60646C;
+  --green-bg:#E6F6EB; --green-border:#ADDDC0; --green-solid:#30A46C; --green-text:#218358;
+  --amber-bg:#FFF7C2; --amber-border:#F3D673; --amber-solid:#FFC53D; --amber-text:#AB6400;
+  --red-bg:#FEEBEC; --red-border:#FDBDBE; --red-solid:#E5484D; --red-text:#CE2C31;
+  --blue-bg:#E6F4FE; --blue-border:#ACD8FC; --blue-solid:#0090FF; --blue-text:#0D74CE;
+}
+:root[data-theme="dark"] .prints, :root[data-theme="dark"] #printsNav {
+  --p-bg:#111113; --p-card:#18191B; --p-fg:#EDEEF0; --p-2:#B0B4BA; --p-3:#8B8D98; --gray-bg:#212225; --gray-border:#363A3F; --gray-text:#B0B4BA;
+  --green-bg:#132D21; --green-border:#20573E; --green-text:#3DD68C; --amber-bg:#302008; --amber-border:#5C3D05; --amber-text:#FFCA16;
+  --red-bg:#3B1219; --red-border:#72232D; --red-text:#FF9592; --blue-bg:#0D2847; --blue-border:#104D87; --blue-text:#70B8FF;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .prints, :root:not([data-theme="light"]) #printsNav {
+  --p-bg:#111113; --p-card:#18191B; --p-fg:#EDEEF0; --p-2:#B0B4BA; --p-3:#8B8D98; --gray-bg:#212225; --gray-border:#363A3F; --gray-text:#B0B4BA;
+  --green-bg:#132D21; --green-border:#20573E; --green-text:#3DD68C; --amber-bg:#302008; --amber-border:#5C3D05; --amber-text:#FFCA16;
+  --red-bg:#3B1219; --red-border:#72232D; --red-text:#FF9592; --blue-bg:#0D2847; --blue-border:#104D87; --blue-text:#70B8FF; } }
+.pic { flex:none; vertical-align:-3px; }
+/* the page's entries in the list on the left */
+.side #printsNav { display:flex; flex-direction:column; gap:4px; margin:4px 0 8px; }
 .side #printsNav[hidden] { display:none; }
-.side button.sub2 { margin-left:22px; font-size:14px; white-space:nowrap; display:flex; justify-content:space-between; gap:6px; padding-top:5px; padding-bottom:5px; }
-.side button.sub2 .n { font-weight:400; font-variant-numeric:tabular-nums; color:var(--muted); }
-.prints { gap:16px; }
-.phead { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 12px; margin-bottom:12px; }
-.phead h3 { margin:0; font-size:16px; font-weight:600; color:var(--fg); }
-.phead.top { margin-bottom:0; } .phead.top h2 { margin:0; font-size:24px; font-weight:700; color:var(--fg); letter-spacing:-.3px; }
-.phead.top .read { margin-left:auto; font-size:13px; }
-.phead.big { margin:6px 0 0; } .phead.big h3 { font-size:20px; } .phead.big b { font-size:20px; font-variant-numeric:tabular-nums; }
-.pstack { display:flex; gap:3px; height:28px; }
-.pstack button { padding:0; border:0; border-radius:6px; min-width:6px; cursor:pointer; } .pstack button:hover { filter:brightness(.92); }
-.plegend { display:flex; flex-wrap:wrap; gap:6px 10px; margin-top:12px; }
-.plegend button { display:flex; align-items:baseline; gap:8px; border:0; background:none; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:14px; }
-.plegend button:hover, .pbar:hover { background:var(--bg); }
-.plegend i { width:10px; height:10px; border-radius:3px; align-self:center; }
-.plegend b { font-size:18px; font-variant-numeric:tabular-nums; } .plegend em { font-style:normal; color:var(--muted); font-size:13px; }
-.pcols { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; align-items:start; }
-.pbig { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 14px; margin-bottom:16px; }
-.pbig b { font-size:44px; line-height:1; letter-spacing:-1px; color:var(--green); font-variant-numeric:tabular-nums; } .pbig span { color:var(--muted); font-size:14px; }
-.psub { font-size:13px; color:var(--muted); margin-bottom:4px; }
-.pbar { display:grid; grid-template-columns:8.5em minmax(40px,1fr) 3.2em 3.2em; gap:10px; align-items:center; width:100%; border:0; background:none;
-        padding:7px 8px; border-radius:8px; cursor:pointer; font-size:14px; text-align:left; }
-.pbar .b { height:10px; border-radius:5px; background:var(--bg); overflow:hidden; } .pbar .b i { display:block; height:100%; border-radius:5px; }
-.pbar .c { text-align:right; font-weight:600; font-variant-numeric:tabular-nums; } .pbar .p { text-align:right; color:var(--muted); font-size:13px; font-variant-numeric:tabular-nums; }
-.dash table.ptable th, .dash table.ptable td { text-align:left; padding:9px 12px 9px 0; }
-.pnote summary { cursor:pointer; color:var(--muted); font-size:14px; } .pnote p { margin:10px 0 0; font-size:14px; line-height:1.6; color:var(--muted); } .pnote p b { color:var(--fg); font-weight:600; }
+.side #printsNav .psep { font-size:12px; color:var(--p-3); margin:12px 0 0 22px; }
+.side button.sub2 { margin-left:14px; font-size:13px; white-space:nowrap; display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px; color:var(--p-2); }
+.side button.sub2 > span:nth-child(2) { flex:1; text-align:left; }
+.side button.sub2 .n { font-size:12px; font-weight:400; font-variant-numeric:tabular-nums; color:var(--p-3); }
+.side button.sub2.on { color:var(--p-fg); font-weight:600; background:var(--blue-bg); border-color:var(--blue-border); }
+.pnavl { display:inline-flex; } .pnavl.green { color:var(--green-text); } .pnavl.amber { color:var(--amber-text); } .pnavl.red { color:var(--red-text); } .pnavl.blue { color:var(--blue-text); } .pnavl.gray { color:var(--gray-text); }
+/* the page */
+.prints { gap:24px; color:var(--p-fg); font-size:14px; line-height:1.5; }
+.dash.prints h2 { margin:0; font-size:24px; font-weight:600; color:var(--p-fg); } .dash.prints h3 { margin:0; font-size:16px; font-weight:600; color:var(--p-fg); }
+.psmall { font-size:13px; color:var(--p-2); font-weight:400; }
+.phead { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 12px; }
+.pread { margin-left:auto; display:flex; align-items:center; gap:8px; font-size:12px; color:var(--p-3); font-variant-numeric:tabular-nums; }
+.pbtn { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer;
+        background:var(--p-card); color:var(--p-fg); border:1px solid var(--gray-border); }
+.pbtn:hover { background:var(--gray-bg); }
+.pbtn.primary { background:var(--blue-solid); border-color:var(--blue-solid); color:#fff; } .pbtn.primary:hover { filter:brightness(.95); background:var(--blue-solid); }
+.pbtn.yes { background:var(--green-solid); border-color:var(--green-solid); color:#fff; font-weight:600; padding:0 16px; } .pbtn.yes:hover { filter:brightness(.95); background:var(--green-solid); }
+.pbtn.no { color:var(--red-text); padding:0 8px; } .pbtn.no:hover { background:var(--red-bg); border-color:var(--red-border); }
+.ppill { display:inline-flex; align-items:center; gap:4px; height:22px; padding:0 8px; border-radius:999px; font-size:12px; font-weight:500; border:1px solid; white-space:nowrap; }
+.ppill.green { background:var(--green-bg); border-color:var(--green-border); color:var(--green-text); } .ppill.amber { background:var(--amber-bg); border-color:var(--amber-border); color:var(--amber-text); }
+.ppill.red { background:var(--red-bg); border-color:var(--red-border); color:var(--red-text); } .ppill.blue { background:var(--blue-bg); border-color:var(--blue-border); color:var(--blue-text); }
+.ppill.gray { background:var(--gray-bg); border-color:var(--gray-border); color:var(--gray-text); }
+.ppanel { background:var(--p-card); border:1px solid var(--gray-border); border-radius:12px; padding:16px; }
+.ptitle { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; margin-bottom:12px; }
+/* what the owner has to do: on top, amber */
+.pcall { display:flex; align-items:center; gap:12px; padding:12px 16px; border-radius:12px; background:var(--amber-bg); border:1px solid var(--amber-border); color:var(--amber-text); }
+.pcall > div { flex:1; display:flex; flex-direction:column; } .pcall b { font-size:16px; font-weight:600; } .pcall span { font-size:13px; }
+/* the one number */
+.pkey { display:flex; align-items:center; gap:16px; margin-bottom:16px; }
+.pnum { display:flex; align-items:baseline; gap:8px; font-variant-numeric:tabular-nums; } .pnum b { font-size:32px; line-height:1.2; font-weight:600; } .pnum span { font-size:16px; color:var(--p-2); }
+.pkeytxt { flex:1; } .pkeypct { font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; color:var(--p-2); }
+.pseg { display:flex; gap:2px; height:12px; } .pseg i { border-radius:4px; min-width:4px; }
+.pseg .green, .pleg i.green { background:var(--green-solid); } .pseg .amber, .pleg i.amber { background:var(--amber-solid); } .pseg .amber2, .pleg i.amber2 { background:var(--amber-border); }
+.pseg .red, .pleg i.red { background:var(--red-solid); } .pseg .gray, .pleg i.gray { background:var(--gray-border); }
+.pleg { display:flex; flex-wrap:wrap; gap:4px 8px; margin-top:12px; }
+.pleg button { display:inline-flex; align-items:center; gap:8px; padding:4px 8px; border:0; border-radius:8px; background:none; cursor:pointer; font-size:13px; color:var(--p-fg); }
+.pleg button:hover, .pbar:hover { background:var(--gray-bg); }
+.pleg i { width:8px; height:8px; border-radius:2px; } .pleg .pic { color:var(--p-2); } .pleg b { font-weight:600; font-variant-numeric:tabular-nums; } .pleg em { font-style:normal; font-size:12px; color:var(--p-3); font-variant-numeric:tabular-nums; }
+.prints table.ptab { border-collapse:collapse; width:100%; font-size:14px; font-variant-numeric:tabular-nums; }
+.prints table.ptab th { font-size:13px; font-weight:500; color:var(--p-2); text-align:left; height:40px; padding:0 12px 0 0; border-bottom:1px solid var(--gray-border); }
+.prints table.ptab td { height:40px; padding:0 12px 0 0; text-align:left; border-bottom:1px solid var(--gray-bg); } .prints table.ptab tr:last-child td { border-bottom:0; }
+.prints table.ptab .r { text-align:right; } .prints table.ptab td .pic { margin-right:8px; color:var(--p-2); } .prints table.ptab tr:hover td { background:var(--p-bg); }
+.pbar { display:grid; grid-template-columns:10em minmax(40px,1fr) 4em 16px; gap:12px; align-items:center; width:100%; height:40px; padding:0 8px; border:0; border-radius:8px; background:none;
+        cursor:pointer; font-size:14px; text-align:left; color:var(--p-fg); }
+.pbar .b { height:8px; border-radius:4px; background:var(--gray-bg); overflow:hidden; } .pbar .b i { display:block; height:100%; border-radius:4px; background:var(--gray-solid); }
+.pbar .c { text-align:right; font-weight:600; font-variant-numeric:tabular-nums; } .pbar .pic { color:var(--p-3); }
+.pmore summary { display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:var(--p-2); list-style:none; } .pmore summary::-webkit-details-marker { display:none; }
+.pmore p { margin:12px 0 0; font-size:13px; color:var(--p-2); } .pmore p b { color:var(--p-fg); font-weight:600; }
+.pempty { display:flex; align-items:center; justify-content:center; gap:8px; padding:32px 16px; border:1px dashed var(--gray-border); border-radius:12px; color:var(--p-2); font-size:14px; }
+.pempty.red { color:var(--red-text); border-color:var(--red-border); background:var(--red-bg); }
+/* a heading's pictures */
+.plisthead { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+.phicon { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:8px; border:1px solid; }
+.phicon.green { background:var(--green-bg); border-color:var(--green-border); color:var(--green-text); } .phicon.amber { background:var(--amber-bg); border-color:var(--amber-border); color:var(--amber-text); }
+.phicon.red { background:var(--red-bg); border-color:var(--red-border); color:var(--red-text); } .phicon.blue { background:var(--blue-bg); border-color:var(--blue-border); color:var(--blue-text); }
+.phicon.gray { background:var(--gray-bg); border-color:var(--gray-border); color:var(--gray-text); }
+.pcount { font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; color:var(--p-2); }
 .pchips { display:flex; flex-wrap:wrap; gap:8px; }
-.pchips button { border-radius:999px; padding:6px 14px; font-size:14px; cursor:pointer; } .pchips button b { font-weight:400; color:var(--muted); margin-left:2px; font-variant-numeric:tabular-nums; }
-.pchips button.on { background:var(--fg); color:var(--bg); border-color:var(--fg); } .pchips button.on b { color:inherit; opacity:.7; }
-.pgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; } .pgrid.duo { grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); }
-.pcard { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
-.pcard .pics { display:grid; } .pcard.duo .pics { grid-template-columns:1fr 1fr; gap:1px; background:var(--line); }
-.pcard img, .pcard .none { display:block; width:100%; aspect-ratio:1; object-fit:contain; background:#fff; } .pcard img.cut { background:#555; }
-.pcard .none { display:grid; place-items:center; color:#999; font-size:13px; background:var(--bg); }
-.pcard .t { padding:10px 12px 2px; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.pcard .s { display:flex; flex-wrap:wrap; gap:2px 10px; padding:0 12px 10px; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
-.pcard .s .tag { color:var(--amber); }
-.pgrid.big { grid-template-columns:repeat(auto-fill,minmax(440px,1fr)); }
-.pact { display:flex; flex-wrap:wrap; gap:6px; padding:2px 12px 12px; }
-.pact button { font-size:13px; padding:6px 11px; border-radius:8px; cursor:pointer; }
-.pact .yes { background:var(--green); color:#fff; border-color:var(--green); font-weight:600; padding:6px 18px; }
-.pact .no { color:var(--red); }
-.pfun { display:flex; height:30px; gap:3px; } .pfun i { border-radius:6px; min-width:4px; }
-.pmore { display:flex; align-items:center; gap:12px; justify-content:center; padding:8px 0 24px; } .pmore button { padding:8px 22px; border-radius:999px; cursor:pointer; }
+.pchips button { height:32px; padding:0 12px; border-radius:999px; font-size:13px; cursor:pointer; background:var(--p-card); color:var(--p-fg); border:1px solid var(--gray-border); }
+.pchips button b { font-weight:400; color:var(--p-3); margin-left:4px; font-variant-numeric:tabular-nums; }
+.pchips button.on { background:var(--blue-bg); border-color:var(--blue-border); color:var(--blue-text); font-weight:600; } .pchips button.on b { color:inherit; }
+.pgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:16px; } .pgrid.duo { grid-template-columns:repeat(auto-fill,minmax(520px,1fr)); }
+.pgrid.duo.judge { grid-template-columns:repeat(auto-fill,minmax(760px,1fr)); } .pgrid.judge .pcard figure img { height:440px; }   /* judged by: each picture 360 wide at the least */
+.pcard { display:flex; flex-direction:column; background:var(--p-card); border:1px solid var(--gray-border); border-radius:12px; overflow:hidden; }
+.pcard .pics { display:grid; gap:1px; background:var(--gray-border); } .pcard.duo .pics { grid-template-columns:1fr 1fr; }
+.pcard figure { position:relative; margin:0; background:#FFFFFF; } .pcard figure.cut { background:var(--gray-solid); }
+.pcard figure img { display:block; width:100%; height:360px; object-fit:contain; }
+.pcard figcaption { position:absolute; left:8px; top:8px; padding:0 8px; height:20px; line-height:20px; border-radius:999px; font-size:12px; background:var(--p-card); color:var(--p-2); border:1px solid var(--gray-border); }
+.pcard .none { display:flex; align-items:center; justify-content:center; gap:8px; height:360px; color:var(--p-3); font-size:13px; background:var(--gray-bg); }
+.pcard .t { padding:12px 16px 0; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pcard .s { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; padding:8px 16px 12px; font-size:12px; color:var(--p-3); font-variant-numeric:tabular-nums; }
+.pact { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:auto; padding:12px 16px; border-top:1px solid var(--gray-bg); }
+.pnext { display:flex; align-items:center; justify-content:center; gap:12px; padding:8px 0 24px; }
+@media (max-width:820px) { .pgrid.duo, .pgrid.duo.judge { grid-template-columns:minmax(0,1fr); } .pgrid.judge .pcard figure img { height:240px; } .pcard figure img, .pcard .none { height:240px; } .pkey { flex-wrap:wrap; } .pbar { grid-template-columns:7em minmax(30px,1fr) 3.5em 16px; } }
 .moved { margin:0 0 8px; padding:8px 10px; border-radius:8px; background:var(--amber-bg); font-size:14px; }
 /* the record wall's filters */
 .filters { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin-bottom:12px; }
@@ -1925,141 +1976,151 @@ async function refreshCache() {
   pollTimer = setTimeout(refreshCache, cacheFailed ? Math.min(60000, 5000 * cacheFailed) : 10000);
 }
 
-// ---- Print files out of main pictures: cut out first, redrawn on UV1 when that cannot be done ----
-// Every product of the catalogue is in one of four groups; the groups are listed under 印刷稿 in the
-// page's own list on the left, and a group's reasons are the chips above its pictures. The counts
-// are read once when the page is opened and when 刷新 is pressed; a group's pictures are read when
-// it is opened, 96 at a time, and kept until 刷新. Nothing here changes by the second.
+// ---- Print files out of main pictures ------------------------------------------------------------
+// Made to the owner's page standard (UI.md in the owner's .claude folder, 2026-10-10): the five colours
+// each mean one thing and are variables (set on .prints and #printsNav below in the stylesheet), every
+// state, heading and action has its Lucide icon, sizes and gaps come from the fixed steps.
+// What the page answers: of the products to get a print file, how many can be used, and what the
+// owner has to look at. The counts are read once when the page is opened and when 刷新 is pressed; a
+// heading's pictures are read when it is opened, 96 at a time. Nothing here changes by the second.
 let printsData = null, printsCat = "overview", printsWhy = null, printsCache = {};
+const PICON = {   // Lucide (ISC), the shapes this page uses
+  "circle-check": '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  "circle-x": '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+  "circle-minus": '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>',
+  "ban": '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  "clock": '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  "triangle-alert": '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  "info": '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  "refresh-cw": '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+  "undo-2": '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>',
+  "layout-dashboard": '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
+  "image": '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+  "scissors": '<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>',
+  "sparkles": '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>',
+  "chevron-right": '<path d="m9 18 6-6-6-6"/>',
+};
+const pic = (name, size = 16) => `<svg class="pic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PICON[name] || ""}</svg>`;
 const PRINT_SKIP = { "a photograph, not a mockup": "实拍照片", "not a black shirt": "不是黑色 T 恤", "print all over": "满版印花",
   "not a men's T-shirt": "不是男款 T 恤", "no print": "没有印花", "not a short-sleeved T-shirt": "不是短袖 T 恤" };
-const PRINT_WHY = [   // what the cut-out said (its first words), a short name, and what it means
-  ["没有白底", "没有白底", "主图是场景图：衣服挂在房间里、模特穿着、铺在地板上。抠图要靠白底把衣服和背景分开，这里分不开。"],
-  ["抠出的范围几乎是整件衣服", "范围像整件衣服", "程序把大半件衣服都当成了印花。多数是水洗做旧的面料，布面本身深浅不匀；也有印花确实铺满的。"],
-  ["衣服不是纯色", "衣服不是纯色", "衣服本身有几种颜色（拼色、扎染、条纹），或者印花占满了整件，分不出哪里是布、哪里是印花。"],
-  ["画面里不止一件", "不止一件东西", "主图里有两件以上的东西（正反面并排、多件装、旁边摆着配饰），不知道该抠哪一件。"],
-  ["印花顶到衣服边", "印花顶到衣服边", "抠出来了，但自检发现印花贴着衣服边缘，很可能被切掉了一部分，所以不算成功。"],
-  ["印花的边界不锐利", "边界不锐利（照片、渐变）", "印花没有锐利的边（照片、发光、喷绘渐变），程序分不清印花到哪里为止，抠出来会缺一块或带一块。"],
-  ["印花框里还有图案没抠到", "还有图案没抠到", "抠出的印花范围里还有清楚的线条没被取到，多半是深色图案印在深色衣服上，和布分不开。"],
-  ["印花外面还有零星碎片", "印花外有碎片", "离印花主体较远的地方还有成片的差异（配饰、角标、另一块图案），不确定算不算印花，所以不算成功。"],
-  ["这一块的空白衣服算得不可靠", "空白衣服不可靠", "同款的几张图在印花这个位置都有各自的印花，没有一张露出布面，空白衣服是推出来的，不够准。"],
-  ["布面和印花之间没有清楚的边界", "布和印花分不开", "从布面往外跟的时候一直停不下来：印花和布之间没有清楚的边界。"],
-  ["和空白衣服比，没有找到印花", "没找到印花", "和空白衣服相比没有明显不同的地方：可能是空白款，或印花颜色和布太接近。"],
-  ["和空白衣服差得太多", "不像同一张底图", "和找到的底图差别太大，多半不是同一张底图。"],
+const PRINT_WHY = [   // what a way said (its first words), a short name, and what it means
+  ["没有白底", "没有白底", "主图是场景图：衣服挂在房间里、模特穿着、铺在地板上。"],
+  ["抠出的范围几乎是整件衣服", "范围像整件衣服", "程序把大半件衣服都当成了印花，多数是水洗做旧的面料。"],
+  ["衣服不是纯色", "衣服不是纯色", "衣服本身有几种颜色，或者印花占满了整件，分不出哪里是布。"],
+  ["画面里不止一件", "不止一件东西", "主图里有两件以上的东西，不知道该抠哪一件。"],
+  ["印花顶到衣服边", "印花顶到衣服边", "印花贴着衣服边缘，很可能被切掉了一部分。"],
+  ["印花的边界不锐利", "边界不锐利", "印花没有锐利的边（照片、发光、渐变），分不清印花到哪里为止。"],
+  ["印花框里还有图案没抠到", "还有图案没抠到", "抠出的范围里还有清楚的线条没被取到，多半是深色印在深色衣服上。"],
+  ["印花外面还有零星碎片", "印花外有碎片", "离印花较远的地方还有成片的差异，不确定算不算印花。"],
+  ["这一块的空白衣服算得不可靠", "空白衣服不可靠", "同款的几张图在这个位置都有印花，空白衣服是推出来的，不够准。"],
+  ["布面和印花之间没有清楚的边界", "布和印花分不开", "从布面往外跟的时候一直停不下来。"],
+  ["和空白衣服比，没有找到印花", "没找到印花", "和空白衣服相比没有明显不同的地方。"],
+  ["和空白衣服差得太多", "不像同一张底图", "和找到的底图差别太大。"],
   ["没认出衣服", "没认出衣服", "没有白底，也没有模特，按颜色也分不出中间那件衣服。"],
   ["印花太小", "印花太小", "抠出来的东西太小，像是没抠到真正的印花。"],
-  ["模型找到了印花，还不能自动确认", "模型找到，待验收", "前三种办法抠不了，换成让模型去找印花（SAM 3）。它找到了，右边是它圈出来的；但程序还不能自动确认它和主图上的印花完全一致，所以不算成功，等人看过再定。"],
-  ["模型找到的印花太小或太零散", "模型找到的太零散", "模型圈出来的东西太小，或者碎成很多块，多半没圈全。右边是它圈出来的。"],
-  ["场景图，还没找到同款底图", "没有同款底图", "场景图或模特图，目录里没有另外几张用同一张样机底图的图，算不出空白衣服。"],
-  ["和同款底图相减后自检没过", "相减后自检没过", "找到了同款底图，但相减出来的印花没通过自检（范围不对、贴着衣服边，或那一块的空白衣服算得不可靠）。"],
+  ["模型找到了印花，还不能自动确认", "模型找到，待确认", "前三种办法抠不了，模型（SAM 3）找到了印花，但程序还不能自动确认它和主图一致。"],
+  ["模型找到的印花太小或太零散", "模型找到的太零散", "模型圈出来的东西太小，或者碎成很多块，多半没圈全。"],
+  ["场景图，还没找到同款底图", "没有同款底图", "没有另外几张用同一张样机底图的图。"],
+  ["和同款底图相减后自检没过", "相减后自检没过", "找到了同款底图，但相减出来的印花没通过自检。"],
 ];
 const printWhy = w => PRINT_WHY.find(x => String(w || "").startsWith(x[0])) || [w, String(w || "").replace(/（.*?）/g, ""), ""];
+const PWAY = { flat: ["白底抠图", "scissors"], template: ["同款底图相减", "scissors"], single: ["单张图估空白衣服", "scissors"], model: ["模型找印花", "sparkles"] };
+const PBAD = ["缺了一块", "多带了东西", "颜色不对", "不是印花", "其它"];
 function printsGroups(d) {
-  const tried = Number(d.tried || 0), cut = Number(d.cut || 0);
+  const tried = Number(d.tried || 0), cut = Number(d.cut || 0), h = d.human || {};
   const fails = (d.why || []).filter(w => w.why !== "抠成功").map(w => ({ why: w.why, n: Number(w.n), label: printWhy(w.why)[1], note: printWhy(w.why)[2] }));
   const skips = (d.skipped || []).map(w => ({ why: w.why, n: Number(w.n), label: PRINT_SKIP[w.why] || w.why, note: "" }));
-  const WAY = { flat: ["白底抠图", "白底、平铺的主图：印花就是和衣服颜色不一样的那部分。"], template: ["同款底图相减", "场景图、模特图：从用同一张样机底图的几张图里算出空白衣服，主图减去它就是印花，褶皱、阴影、手臂都不会带进来。"],
-    single: ["单张图估空白衣服", "没有同款底图的图：布面的变化是平缓的，印花从锐利的边开始。从确定是布的地方往外跟着布走，停下的地方就是印花；印花底下的布用周围的布补出来，再相减。"] };
-  const ways = (d.ways || []).map(w => ({ why: w.why, n: Number(w.n), ok: Number(w.ok || 0), bad: Number(w.bad || 0), label: (WAY[w.why] || [w.why])[0], note: (WAY[w.why] || ["", ""])[1] }));
-  const h = d.human || {};
+  const ways = (d.ways || []).map(w => ({ why: w.why, n: Number(w.n), ok: Number(w.ok || 0), bad: Number(w.bad || 0), label: (PWAY[w.why] || [w.why])[0], note: "" }));
+  // tone: which of the standard's five colours the heading is (one colour, one meaning); icon: its Lucide shape
   return [
-    { key: "overview", label: "总览" },
-    // what a person has to say, and has said (side: not a part of the catalogue's bar - these lie across its parts)
-    { key: "pending", label: "待确认", n: Number(h.cut_pending || 0), side: true, confirm: true, whys: ways.map(w => ({ ...w, n: w.n - w.ok - w.bad })),
-      note: "程序抠成并通过了自检，但还没有人确认它和主图一致。左边主图，右边抠出的印花：一致点“能用”，不一致点原因。每点一下就记下来，这个商品从这里消失。" },
-    { key: "cand", label: "待确认·模型", n: Number(h.cand_pending || 0), side: true, confirm: true,
-      note: "前三种办法抠不了，模型找到了印花（右边）。抽样看大约四成是完整的，所以不算成功，要人看过才算数。" },
-    { key: "confirmed", label: "已确认能用", n: Number(h.cut_ok || 0) + Number(h.cand_ok || 0), side: true, undo: true, note: "人看过、确认和主图一致的。点“撤销”改回待确认。" },
-    { key: "rejected", label: "确认不能用", n: Number(h.cut_bad || 0) + Number(h.cand_bad || 0), side: true, undo: true, note: "人看过、不能用的，归重画。点“撤销”改回待确认。" },
-    { key: "cut", label: "抠成功", n: cut, color: "var(--green)", whys: ways, note: "左边是主图，右边是抠出的印花。抠出的印花放大到印刷尺寸后就是印刷稿。" },
-    { key: "failed", label: "抠不了", n: tried - cut, color: "var(--amber)", whys: fails, note: "程序自己说出了原因；这些主图转给 UV1 的改图模型重画。" },
-    { key: "no_main", label: "没有主图", n: Number(d.no_main || 0), color: "#9a9aa2", note: "目录里要做稿，但采集时没有拿到主图，还没法试抠图。" },
-    { key: "skipped", label: "不做稿", n: (skips || []).reduce((a, w) => a + w.n, 0), color: "#cfcfd6", whys: skips, note: "采集那一步已经标好这些商品不做印刷稿：不进抠图，也不算在成功率里。" },
+    { key: "overview", label: "总览", icon: "layout-dashboard", tone: "blue" },
+    { sep: "要你看的" },
+    { key: "pending", label: "待确认", icon: "clock", tone: "amber", n: Number(h.cut_pending || 0), confirm: true, whys: ways.map(w => ({ ...w, n: w.n - w.ok - w.bad })),
+      note: "程序抠成并通过了自检，还没有人确认它和主图一致。左边主图，右边抠出的印花。" },
+    { key: "cand", label: "待确认 · 模型", icon: "sparkles", tone: "amber", n: Number(h.cand_pending || 0), confirm: true,
+      note: "前三种办法抠不了，模型找到了印花（右边）。抽样看大约四成是完整的，要人看过才算数。" },
+    { sep: "你看过的" },
+    { key: "confirmed", label: "确认能用", icon: "circle-check", tone: "green", n: Number(h.cut_ok || 0) + Number(h.cand_ok || 0), undo: true, note: "人看过、确认和主图一致的。" },
+    { key: "rejected", label: "确认不能用", icon: "circle-x", tone: "red", n: Number(h.cut_bad || 0) + Number(h.cand_bad || 0), undo: true, note: "人看过、不能用的，归重画。" },
+    { sep: "程序的结果" },
+    { key: "cut", label: "程序抠成", icon: "scissors", tone: "blue", n: cut, whys: ways, note: "通过了程序自检的全部，不管人看没看过。" },
+    { key: "failed", label: "抠不了", icon: "ban", tone: "gray", n: tried - cut, whys: fails, note: "每种办法都说出了原因；归重画。" },
+    { key: "no_main", label: "没有主图", icon: "image", tone: "gray", n: Number(d.no_main || 0), note: "要做稿，但采集时没有拿到主图。" },
+    { key: "skipped", label: "不做稿", icon: "circle-minus", tone: "gray", n: skips.reduce((a, w) => a + w.n, 0), whys: skips, note: "采集那一步标了不做印刷稿，不算在上面任何一个数里。" },
   ];
 }
+const ppill = (tone, icon, text) => `<span class="ppill ${tone}">${pic(icon, 14)}${esc(text)}</span>`;
 function printsOverview(d, groups) {
-  const tried = Number(d.tried || 0), cut = Number(d.cut || 0), all = d.all_pictures || {}, total = Number(d.catalog || 0);
-  const parts = groups.filter(g => g.key !== "overview" && !g.side);
-  const h = d.human || {}, okN = Number(h.cut_ok || 0) + Number(h.cand_ok || 0), badN = Number(h.cut_bad || 0) + Number(h.cand_bad || 0);
-  const waitCut = Number(h.cut_pending || 0), waitCand = Number(h.cand_pending || 0), base = Number(d.products || 0);
-  const rest = Math.max(0, base - okN - badN - waitCut - waitCand);
-  const seg = (n, color, title) => n > 0 ? `<i title="${title} ${num(n)}" style="flex:${Math.max(n, base * 0.006)};background:${color}"></i>` : "";
-  const fig = (cat, n, label, color, sub) => `<button data-pcat="${cat}"><i style="background:${color}"></i><span>${label}</span><b>${num(n)}</b><em>${pct(n, base)}${sub ? " · " + sub : ""}</em></button>`;
-  const NAME = { x2: "抠图 + 普通放大", real: "抠图 + 新放大", redraw: "UV1 重画" };
-  const trial = t => `<tr class="${t.method === "real" ? "cur" : ""}" title="${esc(t.note || "")}"><td>${NAME[t.method] || esc(t.method)}${t.method === "real" ? ` <span class="pill idle">现在的做法</span>` : ""}</td>
-    <td>${Number(t.sharp).toFixed(0)}%</td><td><b>${Number(t.fine).toFixed(0)}%</b></td><td><b>${Number(t.same).toFixed(3)}</b></td><td>约 ${Number(t.seconds)} 秒</td></tr>`;
-  const bars = (g, of) => { const top = Math.max(1, ...g.whys.map(w => w.n));
-    return g.whys.map(w => `<button class="pbar" data-pcat="${g.key}" data-pwhy="${esc(w.why)}"><span class="l">${esc(w.label)}</span>
-      <span class="b"><i style="width:${(100 * w.n / top).toFixed(1)}%;background:${g.color}"></i></span><span class="c">${num(w.n)}</span><span class="p">${pct(w.n, of)}</span></button>`).join(""); };
-  const failed = groups.find(g => g.key === "failed"), skipped = groups.find(g => g.key === "skipped");
-  return `<div class="panel">
-      <div class="phead"><h3>要做稿的 ${num(base)} 个商品里，能用多少</h3><span class="muted">“能用”只算人看过、确认和主图一致的 · 点一项去看图</span></div>
-      <div class="pbig"><b>${pct(okN, base)}</b><span>已确认能用 ${num(okN)} 个 · 还没看 ${num(waitCut + waitCand)} 个${h.last ? " · 最近一次确认 " + new Date(h.last).toLocaleString("zh-CN", { hour12: false }) : ""}</span></div>
-      <div class="pfun">${seg(okN, "var(--green)", "已确认能用")}${seg(waitCut, "#9fd8b4", "抠成了，还没看")}${seg(waitCand, "#f0d48a", "模型找到，还没看")}${seg(badN, "var(--red)", "确认不能用")}${seg(rest, "#cfcfd6", "抠不了，归重画")}</div>
-      <div class="plegend">${fig("confirmed", okN, "已确认能用", "var(--green)")}${fig("pending", waitCut, "抠成了，还没看", "#9fd8b4", `程序通过自检 ${num(cut)} 个`)}${fig("cand", waitCand, "模型找到，还没看", "#f0d48a")}${fig("rejected", badN, "确认不能用", "var(--red)")}${fig("failed", rest, "抠不了，归重画", "#cfcfd6")}</div>
-      ${(d.ways || []).length ? `<table class="ptable" style="margin-top:10px"><tr><th>办法</th><th>程序抠成</th><th>确认能用</th><th>确认不能用</th><th>还没看</th><th>看过的里面能用</th></tr>
-        ${groups.find(g => g.key === "cut").whys.map(w => `<tr><td>${esc(w.label)}</td><td>${num(w.n)}</td><td>${num(w.ok)}</td><td>${num(w.bad)}</td><td>${num(w.n - w.ok - w.bad)}</td><td><b>${w.ok + w.bad ? pct(w.ok, w.ok + w.bad) : "–"}</b></td></tr>`).join("")}
-        <tr><td>模型找到（不算抠成）</td><td>${num(h.cand || 0)}</td><td>${num(h.cand_ok || 0)}</td><td>${num(h.cand_bad || 0)}</td><td>${num(waitCand)}</td><td><b>${Number(h.cand_ok || 0) + Number(h.cand_bad || 0) ? pct(h.cand_ok, Number(h.cand_ok) + Number(h.cand_bad)) : "–"}</b></td></tr></table>` : ""}
-      ${(d.bad_why || []).length ? `<div class="muted" style="margin-top:8px">不能用的原因：${d.bad_why.map(w => `${esc(w.why)} ${num(w.n)}`).join(" · ")}</div>` : ""}
+  const h = d.human || {}, base = Number(d.products || 0), cut = Number(d.cut || 0);
+  const okN = Number(h.cut_ok || 0) + Number(h.cand_ok || 0), badN = Number(h.cut_bad || 0) + Number(h.cand_bad || 0);
+  const waitCut = Number(h.cut_pending || 0), waitCand = Number(h.cand_pending || 0), wait = waitCut + waitCand;
+  const rest = Math.max(0, base - okN - badN - wait);
+  const segs = [["confirmed", okN, "green", "circle-check", "确认能用"], ["pending", waitCut, "amber", "clock", "抠成了，待确认"], ["cand", waitCand, "amber2", "sparkles", "模型找到，待确认"],
+    ["rejected", badN, "red", "circle-x", "确认不能用"], ["failed", rest, "gray", "ban", "抠不了，归重画"]];
+  const failed = groups.find(g => g.key === "failed"), skipped = groups.find(g => g.key === "skipped"), ways = groups.find(g => g.key === "cut").whys;
+  const top = Math.max(1, ...failed.whys.map(w => w.n));
+  const row = (label, icon, n, ok, bad) => `<tr><td>${pic(icon)}${esc(label)}</td><td class="r">${num(n)}</td><td class="r">${num(ok)}</td><td class="r">${num(bad)}</td><td class="r">${num(n - ok - bad)}</td>
+    <td class="r"><b>${ok + bad ? pct(ok, ok + bad) : "–"}</b>${ok + bad ? `<span class="psmall"> 看了 ${num(ok + bad)} 个</span>` : ""}</td></tr>`;
+  const NAME = { x2: "抠图 + 普通放大", real: "抠图 + 新放大（现在的做法）", redraw: "UV1 重画" };
+  return `${wait ? `<div class="pcall">${pic("clock", 20)}<div><b>有 ${num(wait)} 个等你确认</b><span>程序抠成的 ${num(waitCut)} 个，模型找到的 ${num(waitCand)} 个。看过的才算“能用”。</span></div>
+        <button class="pbtn primary" data-pcat="pending">${pic("chevron-right")}去确认</button></div>` : ""}
+    <div class="ppanel">
+      <div class="pkey"><div class="pnum"><b>${num(okN)}</b><span>/ ${num(base)}</span></div>
+        <div class="pkeytxt"><div>要做稿的 ${num(base)} 个商品里，确认能用的</div><div class="psmall">只算人看过、确认和主图一致的${h.last ? " · 最近一次确认 " + new Date(h.last).toLocaleString("zh-CN", { hour12: false }) : ""}</div></div>
+        <div class="pkeypct">${pct(okN, base)}</div></div>
+      <div class="pseg">${segs.map(s => s[1] > 0 ? `<i class="${s[2]}" title="${s[4]} ${num(s[1])}" style="flex:${Math.max(s[1], base * 0.006)}"></i>` : "").join("")}</div>
+      <div class="pleg">${segs.map(s => `<button data-pcat="${s[0]}"><i class="${s[2]}"></i>${pic(s[3], 14)}<span>${s[4]}</span><b>${num(s[1])}</b><em>${pct(s[1], base)}</em></button>`).join("")}</div>
     </div>
-    <div class="panel">
-      <div class="phead"><h3>目录里的 ${num(total)} 个商品</h3><span class="muted">点一段看这一组的图</span></div>
-      <div class="pstack">${parts.map(g => `<button data-pcat="${g.key}" title="${esc(g.label)} ${num(g.n)}" style="flex:${Math.max(g.n, total * 0.02)};background:${g.color}"></button>`).join("")}</div>
-      <div class="plegend">${parts.map(g => `<button data-pcat="${g.key}"><i style="background:${g.color}"></i><span>${esc(g.label)}</span><b>${num(g.n)}</b><em>${pct(g.n, total)}</em></button>`).join("")}</div>
-    </div>
-    <div class="pcols">
-      <div class="panel">
-        <div class="phead"><h3>抠图结果</h3><span class="muted">要做稿、有主图的 ${num(tried)} 个</span></div>
-        <div class="pbig"><b>${pct(cut, tried)}</b><span>抠成功 ${num(cut)} 个 · 转重画 ${num(tried - cut)} 个 · 每张 ${d.seconds == null ? "–" : Number(d.seconds)} 秒</span></div>
-        <div class="psub">抠成功的办法</div>${groups.find(g => g.key === "cut").whys.map(w => `<button class="pbar" data-pcat="cut" data-pwhy="${esc(w.why)}"><span class="l">${esc(w.label)}</span>
-          <span class="b"><i style="width:${(100 * w.n / Math.max(cut, 1)).toFixed(1)}%;background:var(--green)"></i></span><span class="c">${num(w.n)}</span><span class="p">${pct(w.n, tried)}</span></button>`).join("")}
-        <div class="psub" style="margin-top:12px">抠不了的原因</div>${failed.whys.length ? bars(failed, tried) : `<span class="muted">没有。</span>`}
-      </div>
-      <div class="panel">
-        <div class="phead"><h3>不做稿的原因</h3><span class="muted">${num(skipped.n)} 个，采集时标的</span></div>
-        ${skipped.whys.length ? bars(skipped, total) : `<span class="muted">没有。</span>`}
-      </div>
-    </div>
-    <div class="panel"><div class="phead"><h3>清晰度</h3><span class="muted">和厂里真稿对齐后比 · 100% = 和真稿一样 · 相似 1 = 同一张图</span></div>
-      ${(d.trials || []).length ? `<table class="ptable"><tr><th>做法</th><th>边缘清晰</th><th>细节</th><th>相似</th><th>每张用时</th></tr>${d.trials.map(trial).join("")}</table>
-        <div class="muted" style="margin-top:8px;font-size:13px">${num(d.trials[0].pictures)} 张都有真稿的主图，取中位数。样本少，只能看方向。</div>`
-        : `<span class="muted">还没有测量。</span>`}</div>
-    <details class="panel pnote"><summary>这一页的数是怎么来的</summary>
-      <p><b>抠图</b>：平铺、纯色衣服、白底的主图，印花就是和衣服颜色不一样的那部分，像素原样取下来，文字不会变。不用模型，不占显卡。</p>
-      <p><b>抠不了</b>：程序自己说出原因，这张主图就转给 UV1 的改图模型重画。</p>
-      <p><b>放大</b>：抠出的印花用针对压缩图训练的放大模型放到印刷尺寸（180 dpi）。</p>
-      ${Number(all.tried) ? `<p><b>旧数</b>：第一次是对全部采集到的主图跑的（含不做稿的），${num(all.tried)} 张里抠成 ${num(all.cut)} 张（${pct(all.cut, all.tried)}）。分母不对，以按商品的为准。</p>` : ""}
-      ${d.last ? `<p><b>最近一次跑</b>：${new Date(d.last).toLocaleString("zh-CN", { hour12: false })}</p>` : ""}</details>`;
+    <div class="ppanel"><div class="ptitle"><h3>每种办法靠不靠得住</h3><span class="psmall">最后一列是你点出来的：看过的里面能用的比例</span></div>
+      <table class="ptab"><tr><th>办法</th><th class="r">程序给出</th><th class="r">确认能用</th><th class="r">不能用</th><th class="r">还没看</th><th class="r">看过的里面能用</th></tr>
+        ${ways.map(w => row(w.label, (PWAY[w.why] || [0, "scissors"])[1], w.n, w.ok, w.bad)).join("")}
+        ${row("模型找印花（不算抠成）", "sparkles", Number(h.cand || 0), Number(h.cand_ok || 0), Number(h.cand_bad || 0))}</table>
+      ${(d.bad_why || []).length ? `<div class="psmall" style="margin-top:12px">不能用的原因：${d.bad_why.map(w => `${esc(w.why)} ${num(w.n)}`).join(" · ")}</div>` : ""}</div>
+    <div class="ppanel"><div class="ptitle"><h3>抠不了的原因</h3><span class="psmall">共 ${num(failed.n)} 个 · 点一行看图</span></div>
+      ${failed.whys.length ? failed.whys.map(w => `<button class="pbar" data-pcat="failed" data-pwhy="${esc(w.why)}"><span class="l">${esc(w.label)}</span>
+        <span class="b"><i style="width:${(100 * w.n / top).toFixed(1)}%"></i></span><span class="c">${num(w.n)}</span>${pic("chevron-right", 14)}</button>`).join("") : `<div class="pempty">${pic("circle-check", 20)}没有抠不了的。</div>`}</div>
+    <details class="ppanel pmore"><summary>${pic("info")}这一页的数是怎么来的，以及不做稿的 ${num(skipped.n)} 个</summary>
+      <p><b>四种办法按顺序试</b>：白底抠图 → 同款底图相减 → 单张图估空白衣服 → 模型找印花。前三种取的是主图上的原像素，通过自检就算“程序抠成”（${num(cut)} 个）；第四种找到了也不算抠成，要人确认。</p>
+      <p><b>“能用”</b>只算人点过“能用”的。印刷稿必须和主图上的印花一致，拿不准的不算。</p>
+      <p><b>不做稿的原因</b>（采集时标的，不在 ${num(base)} 个里）：${skipped.whys.map(w => `${esc(w.label)} ${num(w.n)}`).join(" · ") || "没有"}。另有 ${num(d.no_main || 0)} 个要做稿但没采到主图。</p>
+      ${(d.trials || []).length ? `<p><b>放大后的清晰度</b>（和厂里真稿比，${num(d.trials[0].pictures)} 张，样本少）：${d.trials.map(t => `${NAME[t.method] || esc(t.method)} 细节 ${Number(t.fine).toFixed(0)}%、相似 ${Number(t.same).toFixed(3)}`).join("；")}。</p>` : ""}
+      ${d.last ? `<p><b>程序最近一次跑</b>：${new Date(d.last).toLocaleString("zh-CN", { hour12: false })}</p>` : ""}</details>`;
 }
 function printsList(g) {
   const why = g.whys && g.whys.find(w => w.why === printsWhy) || null, n = why ? why.n : g.n;
   const c = printsCache[g.key + ":" + (why ? why.why : "")] || { rows: [] }, left = Math.max(0, n - c.rows.length);
-  const BAD = ["缺了一块", "多带了东西", "颜色不对", "不是印花", "其它"];
-  const act = r => g.confirm ? `<div class="pact"><button class="yes" data-mark="ok" data-goods="${esc(r.goods_id)}">能用</button>${BAD.map(b => `<button class="no" data-mark="bad" data-goods="${esc(r.goods_id)}" data-why="${b}">${b}</button>`).join("")}</div>`
-    : g.undo ? `<div class="pact"><span class="muted" style="align-self:center">${r.human === "bad" ? "不能用：" + esc(r.human_why || "没说原因") : "能用"}</span><button data-mark="" data-goods="${esc(r.goods_id)}">撤销</button></div>` : "";
-  const tag = r => why ? "" : g.key === "cut" || g.key === "pending" || (g.undo && r.cut) ? `<span class="tag" style="color:var(--green)">${esc((g.whys.find(w => w.why === r.why) || {}).label || "")}</span>` : g.key === "failed" ? `<span class="tag">${esc(printWhy(r.why)[1])}</span>` : g.key === "skipped" ? `<span class="tag">${esc(PRINT_SKIP[r.why] || r.why || "")}</span>` : "";
-  const card = r => `<div data-card="${esc(r.goods_id)}" class="pcard${g.key === "cut" || r.thumb_url ? " duo" : ""}">
-      <div class="pics">${r.source ? `<img src="${esc(r.source)}" loading="lazy" alt="">` : `<div class="none">没有主图</div>`}${g.key === "cut" || r.thumb_url ? `<img class="cut" src="${esc(r.thumb_url || "")}" loading="lazy" alt="">` : ""}</div>
+  const two = r => !!(r.thumb_url || g.key === "cut" || g.key === "pending");
+  const how = r => r.cut ? ppill("blue", (PWAY[r.why] || [0, "scissors"])[1], (PWAY[r.why] || [r.why])[0])
+    : g.key === "skipped" ? ppill("gray", "circle-minus", PRINT_SKIP[r.why] || r.why || "") : r.why ? ppill(r.thumb_url ? "amber" : "gray", r.thumb_url ? "sparkles" : "ban", printWhy(r.why)[1]) : "";
+  const said = r => r.human === "ok" ? ppill("green", "circle-check", "能用") : r.human === "bad" ? ppill("red", "circle-x", "不能用：" + (r.human_why || "没说原因")) : "";
+  const act = r => g.confirm ? `<div class="pact"><button class="pbtn yes" data-mark="ok" data-goods="${esc(r.goods_id)}">${pic("circle-check")}能用</button>
+        <span class="psmall">不能用：</span>${PBAD.map(b => `<button class="pbtn no" data-mark="bad" data-goods="${esc(r.goods_id)}" data-why="${b}">${b}</button>`).join("")}</div>`
+    : g.undo ? `<div class="pact">${said(r)}<button class="pbtn" data-mark="" data-goods="${esc(r.goods_id)}">${pic("undo-2")}撤销</button></div>` : "";
+  const card = r => `<div data-card="${esc(r.goods_id)}" class="pcard${two(r) ? " duo" : ""}">
+      <div class="pics">${r.source ? `<figure><img src="${esc(r.source)}" loading="lazy" alt="主图"><figcaption>主图</figcaption></figure>` : `<div class="none">${pic("image", 20)}没有主图</div>`}
+        ${two(r) ? `<figure class="cut"><img src="${esc(r.thumb_url || "")}" loading="lazy" alt="抠出的印花"><figcaption>${r.cut ? "抠出的印花" : "模型圈出的"}</figcaption></figure>` : ""}</div>
       <div class="t" title="${esc(r.title || "")}">${esc(r.title || "商品 " + r.goods_id)}</div>
-      <div class="s">${tag(r)}${r.sold != null ? `<span>卖出 ${esc(r.sold)}</span>` : ""}${g.key === "cut" && r.px ? `<span>印花 ${r.px[0]}×${r.px[1]}</span>` : ""}<span title="商品号">${esc(r.goods_id)}</span></div>${act(r)}</div>`;
+      <div class="s">${how(r)}${g.undo || g.confirm ? "" : said(r)}${r.sold != null ? `<span>卖出 ${esc(r.sold)}</span>` : ""}<span>${esc(r.goods_id)}</span></div>${act(r)}</div>`;
   const chips = g.whys && g.whys.length ? `<div class="pchips"><button data-pcat="${g.key}" class="${why ? "" : "on"}">全部 <b>${num(g.n)}</b></button>
       ${g.whys.map(w => `<button data-pcat="${g.key}" data-pwhy="${esc(w.why)}" class="${why && why.why === w.why ? "on" : ""}">${esc(w.label)} <b>${num(w.n)}</b></button>`).join("")}</div>` : "";
-  return `<div class="phead big"><h3>${esc(g.label)}${why ? " · " + esc(why.label) : ""}</h3><b>${num(n)}</b><span class="muted">个商品</span></div>
-    <div class="muted" style="margin-top:-8px">${esc(why && why.note || g.note || "")}</div>
+  const state = c.err ? `<div class="pempty red">${pic("circle-x", 20)}没读到：${esc(c.err)}</div>` : c.loaded ? `<div class="pempty">${pic(g.confirm ? "circle-check" : "info", 20)}${g.confirm ? "这一组都看完了。" : "这一组没有商品。"}</div>`
+    : `<div class="pempty">${pic("refresh-cw", 20)}读取中…</div>`;
+  return `<div class="plisthead"><span class="phicon ${g.tone}">${pic(g.icon, 20)}</span><h3>${esc(g.label)}${why ? " · " + esc(why.label) : ""}</h3><span class="pcount">${num(n)} 个</span>
+      <span class="psmall">${esc(why && why.note || g.note || "")}</span></div>
     ${chips}
-    <div class="pgrid${g.key === "cut" || c.rows.some(r => r.thumb_url) ? " duo" : ""}${g.confirm ? " big" : ""}">${c.rows.map(card).join("") || `<span class="muted">${c.err ? esc(c.err) : c.loaded ? "这一组没有商品。" : "加载中…"}</span>`}</div>
-    ${c.loaded && left > 0 && !c.end ? `<div class="pmore"><button id="printsMore">再看 96 个</button><span class="muted">已显示 ${num(c.rows.length)} / ${num(n)}</span></div>` : ""}
-    ${c.loaded && c.rows.length && (left <= 0 || c.end) ? `<div class="pmore"><span class="muted">${num(c.rows.length)} 个都在上面了。</span></div>` : ""}`;
+    ${c.rows.length ? `<div class="pgrid${c.rows.some(two) ? " duo" : ""}${g.confirm ? " judge" : ""}">${c.rows.map(card).join("")}</div>` : state}
+    ${c.loaded && left > 0 && !c.end && c.rows.length ? `<div class="pnext"><button class="pbtn" id="printsMore">${pic("chevron-right")}再看 96 个</button><span class="psmall">已显示 ${num(c.rows.length)} / ${num(n)}</span></div>` : ""}`;
 }
 function printsPaint() {
   const d = printsData;
   if (!d || view !== "prints") return;
   const groups = printsGroups(d), g = groups.find(x => x.key === printsCat) || groups[0];
-  $("#printsNav").innerHTML = groups.map(x => `<button data-pcat="${x.key}" class="sub2${x.key === g.key ? " on" : ""}"><span>${esc(x.label)}</span>${x.n == null ? "" : `<span class="n">${num(x.n)}</span>`}</button>`).join("");
+  $("#printsNav").innerHTML = groups.map(x => x.sep ? `<div class="psep">${esc(x.sep)}</div>`
+    : `<button data-pcat="${x.key}" class="sub2${x.key === g.key ? " on" : ""}"><span class="pnavl ${x.tone}">${pic(x.icon)}</span><span>${esc(x.label)}</span>${x.n == null ? "" : `<span class="n">${num(x.n)}</span>`}</button>`).join("");
   $("#printsNav").hidden = false;
   $("#main").innerHTML = `<div class="dash prints">
-    <div class="phead top"><h2>印刷稿</h2><span class="muted">从 Temu 主图做出印刷稿：先抠图，抠不了的再让 UV1 重画</span>
-      <span class="muted read">读取于 ${new Date(d.read_at).toLocaleTimeString("zh-CN", { hour12: false })} <button class="linkish" id="printsReload">刷新</button></span></div>
+    <div class="phead"><h2>印刷稿</h2><span class="psmall">从 Temu 主图做出印刷稿：能抠的抠下来，抠不了的归重画</span>
+      <span class="pread">读取于 ${new Date(d.read_at).toLocaleTimeString("zh-CN", { hour12: false })}<button class="pbtn" id="printsReload">${pic("refresh-cw")}刷新</button></span></div>
     ${g.key === "overview" ? printsOverview(d, groups) : printsList(g)}</div>`;
   $("#printsReload").onclick = refreshPrints;
   document.querySelectorAll("[data-pcat]").forEach(b => b.onclick = () => {
@@ -2112,7 +2173,7 @@ async function refreshPrints() {
     if (view !== "prints") return;
     printsData = { ...d, read_at: Date.now() }; printsCache = {};
     printsPaint();
-  } catch (err) { $("#main").innerHTML = `<div class="empty">${esc(err.message)}</div>`; }
+  } catch (err) { $("#main").innerHTML = `<div class="dash prints"><div class="pempty red">${pic("circle-x", 20)}没读到：${esc(err.message)}</div></div>`; }
 }
 
 // ---- Sonnet by order volume: the rule, what it costs, and every question it was asked ---------
