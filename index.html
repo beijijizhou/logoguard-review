@@ -81,7 +81,8 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 @media (max-width:820px) { .shell { grid-template-columns:minmax(0,1fr); }
   .side { flex-direction:row; flex-wrap:wrap; width:auto; position:static; padding:10px 16px 0; }
   .side button.sub { margin-left:0; } }
-.pwrap { display:grid; grid-template-columns:216px minmax(0,1fr); gap:18px; align-items:start; }
+.pwrap { grid-column:1/-1; display:grid; grid-template-columns:216px minmax(0,1fr); gap:18px; align-items:start; }
+.pwrap > .dash { grid-column:auto; }
 .pnav { display:flex; flex-direction:column; gap:2px; position:sticky; top:12px; max-height:calc(100vh - 24px); overflow:auto; }
 .pnav .grp { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:var(--muted); margin:14px 10px 4px; }
 .pnav button { display:flex; justify-content:space-between; gap:8px; text-align:left; font-size:14px; border-color:transparent; background:none; color:var(--muted); }
@@ -89,7 +90,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .pnav button:hover { color:var(--fg); }
 .pnav button.on { border-color:var(--line); background:var(--card); color:var(--fg); font-weight:600; }
 .pnav button .n { font-variant-numeric:tabular-nums; font-weight:400; }
-tr.go { cursor:pointer; } tr.go:hover td { color:var(--blue); }
+tr.plink { cursor:pointer; } tr.plink:hover td { color:var(--blue); }
 @media (max-width:820px) { .pwrap { grid-template-columns:minmax(0,1fr); } .pnav { position:static; max-height:none; } }
 .moved { margin:0 0 8px; padding:8px 10px; border-radius:8px; background:var(--amber-bg); font-size:14px; }
 /* the record wall's filters */
@@ -1926,9 +1927,9 @@ function printsOverview(d) {
   const NAME = { x2: "抠图 + 普通放大", real: "抠图 + 新放大（现在的做法）", redraw: "UV1 重画" };
   const trial = t => `<tr class="${t.method === "real" ? "cur" : ""}"><td>${NAME[t.method] || esc(t.method)}</td><td>${num(t.pictures)}</td>
     <td>${Number(t.sharp).toFixed(0)}%</td><td><b>${Number(t.fine).toFixed(0)}%</b></td><td><b>${Number(t.same).toFixed(3)}</b></td><td>约 ${Number(t.seconds)} 秒</td><td class="muted">${esc(t.note || "")}</td></tr>`;
-  const why = w => `<tr data-cat="${w.why === "抠成功" ? "cut" : esc("failed:" + w.why)}" class="go"><td>${w.why === "抠成功" ? `<span class="pill pass">抠成功</span>` : esc(w.why)}</td><td>${num(w.n)}</td><td>${pct(w.n, tried)}</td>
+  const why = w => `<tr data-cat="${w.why === "抠成功" ? "cut" : esc("failed:" + w.why)}" class="plink"><td>${w.why === "抠成功" ? `<span class="pill pass">抠成功</span>` : esc(w.why)}</td><td>${num(w.n)}</td><td>${pct(w.n, tried)}</td>
     <td>${w.why === "抠成功" ? "抠出的印花放大后就是印刷稿" : "转 UV1 重画"}</td><td class="muted">看图 ›</td></tr>`;
-  const skip = w => `<tr data-cat="${esc("skipped:" + w.why)}" class="go"><td>${esc(PRINT_SKIP[w.why] || w.why)}</td><td>${num(w.n)}</td><td>${pct(w.n, d.catalog)}</td><td class="muted">看图 ›</td></tr>`;
+  const skip = w => `<tr data-cat="${esc("skipped:" + w.why)}" class="plink"><td>${esc(PRINT_SKIP[w.why] || w.why)}</td><td>${num(w.n)}</td><td>${pct(w.n, d.catalog)}</td><td class="muted">看图 ›</td></tr>`;
   return `<div class="panel hero">
       <div class="mhead"><b class="nm">印刷稿</b><span class="muted">从 Temu 主图做出印刷稿：先抠图，抠不了的再让 UV1 重画</span></div>
       <div class="mrow"><span class="k">抠图</span><span>平铺、纯色衣服、白底的主图：印花就是和衣服颜色不一样的那部分，像素原样取下来，文字不会变。不用模型，不占显卡。</span></div>
@@ -1963,7 +1964,7 @@ function printsList(cat) {
     : `<div class="dcard ${cat.kind === "failed" ? "review" : ""}">${r.source ? `<img src="${esc(r.source)}" loading="lazy" alt="">` : `<div class="noimg">没有主图</div>`}${cap(r)}</div>`;
   return `<div class="panel hero"><div class="mhead"><b class="nm">${esc(cat.label)}</b><span class="pill idle">${num(cat.n)} 个</span>
         <span class="muted">已显示 ${num(c.rows.length)} 个</span></div>
-      <div class="mrow"><span>${esc(cat.note || "")}</span></div></div>
+      <div style="margin-top:8px;line-height:1.6">${esc(cat.note || "")}</div></div>
     <div class="panel">
       <div class="feed mfeed">${c.rows.map(card).join("") || `<span class="muted">${c.err ? esc(c.err) : c.loaded ? "这一类没有商品。" : "加载中…"}</span>`}</div>
       ${c.loaded && left > 0 && !c.end ? `<div style="margin-top:12px"><button id="printsMore">再看 96 个（还有 ${num(left)} 个没显示）</button></div>` : ""}
