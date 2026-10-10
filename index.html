@@ -2148,10 +2148,12 @@ function printsGroups(d) {
     { key: "redraw_ok", label: "重画 · 确认能用", nav: "重画能用", icon: "circle-check", tone: "green", n: Number(rd.ok || 0), undo: true, redraw: true, note: "重画的里面，人看过、确认能用的。" },
     { key: "redraw_bad", label: "重画 · 确认不能用", nav: "重画不能用", icon: "circle-x", tone: "red", n: Number(rd.bad || 0), undo: true, redraw: true, note: "重画的里面，人看过、不能用的。" },
     { sep: "印刷稿" },
-    { key: "final", label: "放大后的印刷稿", nav: "放大后的稿", icon: "printer", tone: "blue", n: Number(d.final || 0), final: true,
-      note: "抠出的印花放大到印刷尺寸（270 毫米宽，180 dpi，1913 像素）。右边就是要打的图，点“看原大”按实际像素看，看完在卡片上说能用还是哪里不对。"
-        + (fs.n ? ` 你看过 ${num(Number(fs.ok || 0) + Number(fs.bad || 0))} / ${num(fs.n)}：能用 ${num(fs.ok || 0)}，不能用 ${num(fs.bad || 0)}`
-          + ((fs.why || []).length ? "（" + fs.why.map(w => `${w.why} ${num(w.n)}`).join("，") + "）" : "") + "。" : "") },
+    { key: "final", label: "放大后的印刷稿 · 等你确认", nav: "放大后的稿", icon: "printer", tone: "amber", n: Math.max(0, Number(fs.n || d.final || 0) - Number(fs.ok || 0) - Number(fs.bad || 0)), final: true, confirm: true,
+      note: "抠出的印花放大到印刷尺寸（270 毫米宽，180 dpi，1913 像素）。右边就是要打的图，点“看原大”按实际像素看。说了能用或哪里不对，这张就从这里走，到下面两组里。" },
+    { key: "final_ok", label: "印刷稿 · 确认能用", nav: "稿能用", icon: "circle-check", tone: "green", n: Number(fs.ok || 0), final: true,
+      note: "你看过、可以直接打的印刷稿。出单时用的就是这一张，不用再抠图、再放大。" },
+    { key: "final_bad", label: "印刷稿 · 确认不能用", nav: "稿不能用", icon: "circle-x", tone: "red", n: Number(fs.bad || 0), final: true,
+      whys: (fs.why || []).map(w => ({ why: w.why, n: Number(w.n), label: w.why, note: "" })), note: "你看过、放大后不能用的，按原因分。要重新出稿。" },
     { sep: "程序的结果" },
     { key: "cut", label: "程序抠成", icon: "scissors", tone: "blue", n: cut, whys: ways, note: "通过了程序自检的全部，不管人看没看过。" },
     { key: "failed", label: "抠不了", icon: "ban", tone: "gray", n: tried - cut, whys: fails, note: "每种办法都说出了原因；归重画。衣服上没有印花的除外：不做稿，也不重画。" },
@@ -2226,7 +2228,7 @@ function printsOverview(d, groups) {
   const NAME = { x2: "抠图 + 普通放大", real: "抠图 + 新放大（现在的做法）", redraw: "UV1 重画" };
   return `${wait ? `<div class="pcall">${pic("clock", 20)}<div><b>有 ${num(wait)} 个等你确认</b><span>程序抠成的 ${num(waitCut)} 个，模型找到的 ${num(waitCand)} 个。看过的才算“能用”。</span></div>
         <button class="pbtn primary" data-pcat="pending">${pic("chevron-right")}去确认</button></div>` : ""}
-    ${Number(d.final) ? `<div class="pcall blue">${pic("printer", 20)}<div><b>已经放大成印刷稿的有 ${num(d.final)} 张</b><span>抠出的印花放大到印刷尺寸（1913 像素宽）。目前是试样。</span></div>
+    ${Number(d.final) ? `<div class="pcall blue">${pic("printer", 20)}<div><b>已经放大成印刷稿的有 ${num(d.final)} 张，你确认能用的 ${num((d.final_said || {}).ok || 0)} 张</b><span>抠出的印花放大到印刷尺寸（1913 像素宽）。确认能用的出单时直接打，不用再抠图。</span></div>
         <button class="pbtn" data-pcat="final">${pic("chevron-right")}看这 ${num(d.final)} 张</button></div>` : ""}
     <div class="ppanel">
       <div class="pkey"><div class="pnum"><b>${num(okN)}</b><span>/ ${num(base)}</span></div>
@@ -2325,7 +2327,7 @@ function printsPaint() {
   if (g.key !== "overview" && g.key !== "decide" && !printsCache[key]) printsMore(g.key, key);
 }
 async function printsFinalMark(goods, human, why, key) {
-  // the answer on an enlarged file stays on its card (the list is not a queue): the card shows it, the heading counts it
+  // the answer on an enlarged file: written at once (one call), the card goes to the heading of its answer, the counts follow
   const el = document.querySelector(`[data-card="${goods}"]`);
   if (el) el.style.opacity = 0.35;
   try { await api.printsFinalMark(goods, human, why, $("#reviewer").value.trim() || null); }
@@ -2334,10 +2336,17 @@ async function printsFinalMark(goods, human, why, key) {
   if (r) {
     const k = r.checks || (r.checks = {});
     if (k.final_human) s[k.final_human] = Math.max(0, Number(s[k.final_human] || 0) - 1);
+    r._was_why = k.final_human === "bad" ? k.final_why || "没说原因" : "";
     if (human) s[human] = Number(s[human] || 0) + 1;
     k.final_human = human || null; k.final_why = human === "bad" ? why : null;
+    c.rows = c.rows.filter(x => x.goods_id !== goods);
+    const ws = s.why || (s.why = []), was = ws.find(w => w.why === (r._was_why || "")), now = human === "bad" && (ws.find(w => w.why === (why || "没说原因")) || ws[ws.push({ why: why || "没说原因", n: 0 }) - 1]);
+    if (was) was.n = Math.max(0, was.n - 1);
+    if (now) now.n = Number(now.n) + 1;
   }
+  Object.keys(printsCache).forEach(x => { if (x !== key && x.startsWith("final")) delete printsCache[x]; });      // the other headings of the files are read again when opened
   printsPaint();
+  if (c && c.rows.length < 12 && !c.end) printsMore(printsCat, key);
 }
 async function printsFind(q) {
   // one call per search; an empty box takes the heading away again
