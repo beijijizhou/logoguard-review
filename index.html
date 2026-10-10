@@ -647,6 +647,7 @@ const api = REMOTE ? {
   prints() { return this.call({ action: "prints" }); },
   printsRows(kind, why, offset) { return this.call({ action: "prints_rows", kind, why, offset }); },
   printsMark(goods_id, human, why, by) { return this.call({ action: "prints_mark", goods_id, human, why, by }); },
+  printsFinalMark(goods_id, human, why, by) { return this.call({ action: "prints_final_mark", goods_id, human, why, by }); },
   redraws() { return this.call({ action: "redraws" }); },
   redrawRows(kind, offset) { return this.call({ action: "redraw_rows", kind, offset }); },
   redrawMark(goods_id, human, why, by) { return this.call({ action: "redraw_mark", goods_id, human, why, by }); },
@@ -2116,8 +2117,9 @@ const PRINT_WHY = [   // what a way said (its first words), a short name, and wh
 const printWhy = w => PRINT_WHY.find(x => String(w || "").startsWith(x[0])) || [w, String(w || "").replace(/（.*?）/g, ""), ""];
 const PWAY = { flat: ["白底抠图", "scissors"], template: ["同款底图相减", "scissors"], single: ["单张图估空白衣服", "scissors"], model: ["模型找印花", "sparkles"] };
 const PBAD = ["缺了一块", "多带了东西", "颜色不对", "不是印花", "其它"];
+const FBAD = ["边上有黑线", "细节变了", "还是糊", "抠图本身不对", "其它"];     // what can be wrong with an enlarged file
 function printsGroups(d) {
-  const tried = Number(d.tried || 0), cut = Number(d.cut || 0), h = d.human || {}, rd = d.redraw || {};
+  const tried = Number(d.tried || 0), cut = Number(d.cut || 0), h = d.human || {}, rd = d.redraw || {}, fs = d.final_said || {};
   const fails = (d.why || []).filter(w => w.why !== "抠成功").map(w => ({ why: w.why, n: Number(w.n), label: printWhy(w.why)[1], note: printWhy(w.why)[2] }));
   const skips = (d.skipped || []).map(w => ({ why: w.why, n: Number(w.n), label: PRINT_SKIP[w.why] || w.why, note: "" }));
   const ways = (d.ways || []).map(w => ({ why: w.why, n: Number(w.n), ok: Number(w.ok || 0), bad: Number(w.bad || 0), label: (PWAY[w.why] || [w.why])[0], note: "" }));
@@ -2138,7 +2140,9 @@ function printsGroups(d) {
     { key: "redraw_bad", label: "重画 · 确认不能用", nav: "重画不能用", icon: "circle-x", tone: "red", n: Number(rd.bad || 0), undo: true, redraw: true, note: "重画的里面，人看过、不能用的。" },
     { sep: "印刷稿" },
     { key: "final", label: "放大后的印刷稿", nav: "放大后的稿", icon: "printer", tone: "blue", n: Number(d.final || 0), final: true,
-      note: "抠出的印花放大到印刷尺寸（270 毫米宽，180 dpi，1913 像素）。右边就是要打的图，点“看原大”按实际像素看。目前只做了几张试样。" },
+      note: "抠出的印花放大到印刷尺寸（270 毫米宽，180 dpi，1913 像素）。右边就是要打的图，点“看原大”按实际像素看，看完在卡片上说能用还是哪里不对。"
+        + (fs.n ? ` 你看过 ${num(Number(fs.ok || 0) + Number(fs.bad || 0))} / ${num(fs.n)}：能用 ${num(fs.ok || 0)}，不能用 ${num(fs.bad || 0)}`
+          + ((fs.why || []).length ? "（" + fs.why.map(w => `${w.why} ${num(w.n)}`).join("，") + "）" : "") + "。" : "") },
     { sep: "程序的结果" },
     { key: "cut", label: "程序抠成", icon: "scissors", tone: "blue", n: cut, whys: ways, note: "通过了程序自检的全部，不管人看没看过。" },
     { key: "failed", label: "抠不了", icon: "ban", tone: "gray", n: tried - cut, whys: fails, note: "每种办法都说出了原因；归重画。衣服上没有印花的除外：不做稿，也不重画。" },
@@ -2199,7 +2203,11 @@ function printsList(g) {
   const fin = r => { const k = r.checks || {};
     return `<div class="pact">${ppill(Number(k.final_times) > 3.5 ? "amber" : "green", Number(k.final_times) > 3.5 ? "triangle-alert" : "circle-check", `放大 ${Number(k.final_times).toFixed(1)} 倍`)}
       <span class="psmall">主图上 ${num(k.final_from)} 像素宽 → ${k.final_px ? num(k.final_px[0]) + " × " + num(k.final_px[1]) : ""} 像素</span>
-      <a class="pbtn" href="${esc(r.thumb_url || "#")}" target="_blank" rel="noopener">${pic("image")}看原大</a></div>`; };
+      <a class="pbtn" href="${esc(r.thumb_url || "#")}" target="_blank" rel="noopener">${pic("image")}看原大</a></div>
+      <div class="pact">${k.final_human ? (k.final_human === "ok" ? ppill("green", "circle-check", "能用") : ppill("red", "circle-x", "不能用：" + (k.final_why || "没说原因")))
+          + `<button class="pbtn" data-fmark="" data-goods="${esc(r.goods_id)}">${pic("undo-2")}撤销</button>`
+        : `<button class="pbtn yes" data-fmark="ok" data-goods="${esc(r.goods_id)}">${pic("circle-check")}能用</button>
+        <span class="psmall">不能用：</span>${FBAD.map(b => `<button class="pbtn no" data-fmark="bad" data-goods="${esc(r.goods_id)}" data-why="${b}">${b}</button>`).join("")}`}</div>`; };
   const card = r => `<div data-card="${esc(r.goods_id)}" class="pcard${two(r) ? " duo" : ""}">
       <div class="pics">${r.source ? `<figure><img src="${esc(r.source)}" loading="lazy" alt="主图"><figcaption>主图</figcaption></figure>` : `<div class="none">${pic("image", 20)}没有主图</div>`}
         ${two(r) ? `<figure class="cut"><img src="${esc(r.thumb_url || "")}" loading="lazy" alt="${g.final ? "放大后的印刷稿" : "抠出的印花"}"><figcaption>${g.final ? "印刷稿" : r.redraw ? "UV1 重画的" : r.cut ? "抠出的印花" : "模型圈出的"}</figcaption></figure>` : ""}</div>
@@ -2236,7 +2244,23 @@ function printsPaint() {
   const key = g.key + ":" + (g.whys && g.whys.some(w => w.why === printsWhy) ? printsWhy : "");
   if ($("#printsMore")) $("#printsMore").onclick = () => printsMore(g.key, key);
   document.querySelectorAll("#main [data-mark]").forEach(b => b.onclick = () => printsMark(b.dataset.goods, b.dataset.mark, b.dataset.why || null, g.key, key));
+  document.querySelectorAll("#main [data-fmark]").forEach(b => b.onclick = () => printsFinalMark(b.dataset.goods, b.dataset.fmark, b.dataset.why || null, key));
   if (g.key !== "overview" && !printsCache[key]) printsMore(g.key, key);
+}
+async function printsFinalMark(goods, human, why, key) {
+  // the answer on an enlarged file stays on its card (the list is not a queue): the card shows it, the heading counts it
+  const el = document.querySelector(`[data-card="${goods}"]`);
+  if (el) el.style.opacity = 0.35;
+  try { await api.printsFinalMark(goods, human, why, $("#reviewer").value.trim() || null); }
+  catch (err) { if (el) el.style.opacity = 1; toast(err.message); return; }
+  const c = printsCache[key], r = c && c.rows.find(x => x.goods_id === goods), s = printsData.final_said || (printsData.final_said = { ok: 0, bad: 0 });
+  if (r) {
+    const k = r.checks || (r.checks = {});
+    if (k.final_human) s[k.final_human] = Math.max(0, Number(s[k.final_human] || 0) - 1);
+    if (human) s[human] = Number(s[human] || 0) + 1;
+    k.final_human = human || null; k.final_why = human === "bad" ? why : null;
+  }
+  printsPaint();
 }
 async function printsMore(kind, key) {
   const c = printsCache[key] || (printsCache[key] = { rows: [] });
