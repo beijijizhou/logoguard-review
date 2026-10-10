@@ -373,6 +373,7 @@ tr.on td { background:var(--blue-bg); }
     <button data-view="cache" class="sub">查重缓存</button>
     <button data-view="sonnet" class="sub">Sonnet 复核</button>
     <button data-view="ms" class="sub">妙手图</button>
+    <button data-view="prints" class="sub">印刷稿</button>
     <button data-view="admin" class="sub" hidden>用户与计费</button>
   </nav>
   <main id="main"><div class="empty">加载中…</div></main>
@@ -516,6 +517,7 @@ const api = REMOTE ? {
   detail(id) { return this.call({ action: "detail", id: Number(id) }); },
   cache() { return this.call({ action: "cache", days: 14 }); },
   sonnet() { return this.call({ action: "sonnet" }); },
+  prints() { return this.call({ action: "prints" }); },
   sonnetRule(n) { return this.call({ action: "sonnet_rule", min_orders: n }); },
   machines(since) { return this.call({ action: "machines", since }); },
   machine(machine, since, hours) { return this.call({ action: "machine", machine, since, hours }); },
@@ -1875,6 +1877,57 @@ async function refreshCache() {
   pollTimer = setTimeout(refreshCache, cacheFailed ? Math.min(60000, 5000 * cacheFailed) : 10000);
 }
 
+// ---- Print files out of main pictures: cut out first, redrawn on UV1 when that cannot be done ----
+// Read once when the page is opened and when 刷新 is pressed: nothing here changes by the second.
+function printsHtml(d) {
+  const tile = (cls, value, label, note) => `<div class="tile ${cls}"><b>${value}</b><span>${label}</span>${note ? `<small>${note}</small>` : ""}</div>`;
+  const tried = Number(d.tried || 0), cut = Number(d.cut || 0), now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  const NAME = { x2: "抠图 + 普通放大", real: "抠图 + 新放大（现在的做法）", redraw: "UV1 重画" };
+  const trial = t => `<tr class="${t.method === "real" ? "cur" : ""}"><td>${NAME[t.method] || esc(t.method)}</td><td>${num(t.pictures)}</td>
+    <td>${Number(t.sharp).toFixed(0)}%</td><td><b>${Number(t.fine).toFixed(0)}%</b></td><td><b>${Number(t.same).toFixed(3)}</b></td><td>约 ${Number(t.seconds)} 秒</td><td class="muted">${esc(t.note || "")}</td></tr>`;
+  const why = w => `<tr><td>${w.why === "抠成功" ? `<span class="pill pass">抠成功</span>` : esc(w.why)}</td><td>${num(w.n)}</td><td>${pct(w.n, tried)}</td>
+    <td>${w.why === "抠成功" ? "抠出的印花放大后就是印刷稿" : "转 UV1 重画"}</td></tr>`;
+  const cutCard = r => `<div class="dcard pass"><div style="display:flex;gap:2px"><img src="${esc(r.source)}" loading="lazy" alt="" style="width:50%"><img src="${esc(r.thumb_url || "")}" loading="lazy" alt="" style="width:50%;object-fit:contain;background:#555"></div>
+    <div class="cap"><div class="what">抠成功 · 印花 ${r.px ? r.px[0] + "×" + r.px[1] : ""} 像素</div><div class="when">主图 #${r.grab_job} · ${Number(r.seconds)} 秒${r.checks && r.checks.dropped ? ` · 去掉水印/领标 ${r.checks.dropped} 处` : ""}</div></div></div>`;
+  const badCard = r => `<div class="dcard review"><img src="${esc(r.source)}" loading="lazy" alt="">
+    <div class="cap"><div class="what">抠不了：${esc(r.why || "")}</div><div class="when">主图 #${r.grab_job} · 转 UV1 重画</div></div></div>`;
+  return `<div class="dash">
+    <div class="panel hero">
+      <div class="mhead"><b class="nm">印刷稿</b><span class="muted">从 Temu 主图做出印刷稿：先抠图，抠不了的再让 UV1 重画</span>
+        <span class="muted" style="margin-left:auto">读取于 ${now} · <button class="linkish" id="printsReload">刷新</button></span></div>
+      <div class="mrow"><span class="k">抠图</span><span>平铺、纯色衣服、白底的主图：印花就是和衣服颜色不一样的那部分，像素原样取下来，文字不会变。不用模型，不占显卡。</span></div>
+      <div class="mrow"><span class="k">抠不了</span><span>程序自己说出原因（没有白底、衣服不是纯色、范围像整件衣服、自检发现漏抠……），这张主图就转给 UV1 的改图模型重画。</span></div>
+      <div class="mrow"><span class="k">放大</span><span>抠出的印花用针对压缩图训练的放大模型放到印刷尺寸（180 dpi）。清晰度用下面的数字衡量，是和厂里真稿对齐后比出来的。</span></div>
+    </div>
+    <div><h2>现在</h2><div class="tiles">
+      ${tile("", num(d.main_pictures), "采集到的主图（已放行）")}
+      ${tile("", num(tried), "已经试过抠图", `还没试 ${num(Math.max(0, Number(d.main_pictures || 0) - tried))} 张`)}
+      ${tile("green", pct(cut, tried), "抠图成功率", `${num(cut)} 张抠成`)}
+      ${tile("amber", num(tried - cut), "转 UV1 重画", pct(tried - cut, tried))}
+      ${tile("", d.seconds == null ? "–" : Number(d.seconds) + " 秒", "抠一张平均用时", "不含放大")}
+    </div></div>
+    <div class="panel"><div class="mhead"><h2 style="margin:0">清晰度：各种做法和厂里真稿比</h2>
+        <span class="muted">同一批主图 · 100% = 和真稿一样 · “细节”看排线、毛发、细线糊不糊 · “相似”看内容有没有走样（1 = 同一张图）</span></div>
+      ${(d.trials || []).length ? `<table><tr><th>做法</th><th>张数</th><th>边缘清晰</th><th>细节</th><th>相似</th><th>每张</th><th>说明</th></tr>${d.trials.map(trial).join("")}</table>`
+        : `<span class="muted">还没有测量。scripts/cutout_measure.py 测完后用 scripts/prints_run.py --trials 写上来。</span>`}</div>
+    <div class="panel"><h2>每张主图的去向和原因</h2>
+      ${(d.why || []).length ? `<table><tr><th>结果</th><th>张数</th><th>占比</th><th>下一步</th></tr>${d.why.map(why).join("")}</table>` : `<span class="muted">还没有跑过。</span>`}</div>
+    <div class="panel"><div class="mhead"><h2 style="margin:0">抠成功的</h2><span class="muted">最近 ${(d.cut_rows || []).length} 张 · 左主图，右抠出的印花（深色格子 = 透明）</span></div>
+      <div class="feed mfeed">${(d.cut_rows || []).map(cutCard).join("") || `<span class="muted">还没有。</span>`}</div></div>
+    <div class="panel"><div class="mhead"><h2 style="margin:0">抠不了、转重画的</h2><span class="muted">最近 ${(d.failed_rows || []).length} 张 · 每张写着原因</span></div>
+      <div class="feed mfeed">${(d.failed_rows || []).map(badCard).join("") || `<span class="muted">还没有。</span>`}</div></div>
+    </div>`;
+}
+async function refreshPrints() {
+  if (view !== "prints") return;
+  try {
+    const d = await api.prints();
+    if (view !== "prints") return;
+    $("#main").innerHTML = printsHtml(d);
+    $("#printsReload").onclick = refreshPrints;
+  } catch (err) { $("#main").innerHTML = `<div class="empty">${esc(err.message)}</div>`; }
+}
+
 // ---- Sonnet by order volume: the rule, what it costs, and every question it was asked ---------
 let sonnetFailed = 0;
 function sonnetHtml(d) {
@@ -2352,6 +2405,7 @@ function setView(v) {
   if (v === "dash") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshDashboard(); }
   else if (v === "designs") { loadDesigns(); watchCollect(); }
   else if (v === "sonnet") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshSonnet(); }
+  else if (v === "prints") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshPrints(); }
   else if (v === "admin") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; loadAdmin(); }
   else if (v === "ms") { mz.items = []; $("#main").innerHTML = `<div class="empty">加载中…</div>`; loadMs(); refreshMsLive(); }
   else if (v === "cache") { $("#main").innerHTML = `<div class="empty">加载中…</div>`; refreshCache(); }
