@@ -646,6 +646,9 @@ const api = REMOTE ? {
   prints() { return this.call({ action: "prints" }); },
   printsRows(kind, why, offset) { return this.call({ action: "prints_rows", kind, why, offset }); },
   printsMark(goods_id, human, why, by) { return this.call({ action: "prints_mark", goods_id, human, why, by }); },
+  redraws() { return this.call({ action: "redraws" }); },
+  redrawRows(kind, offset) { return this.call({ action: "redraw_rows", kind, offset }); },
+  redrawMark(goods_id, human, why, by) { return this.call({ action: "redraw_mark", goods_id, human, why, by }); },
   sonnetRule(n) { return this.call({ action: "sonnet_rule", min_orders: n }); },
   machines(since) { return this.call({ action: "machines", since }); },
   machine(machine, since, hours) { return this.call({ action: "machine", machine, since, hours }); },
@@ -2112,7 +2115,7 @@ const printWhy = w => PRINT_WHY.find(x => String(w || "").startsWith(x[0])) || [
 const PWAY = { flat: ["白底抠图", "scissors"], template: ["同款底图相减", "scissors"], single: ["单张图估空白衣服", "scissors"], model: ["模型找印花", "sparkles"] };
 const PBAD = ["缺了一块", "多带了东西", "颜色不对", "不是印花", "其它"];
 function printsGroups(d) {
-  const tried = Number(d.tried || 0), cut = Number(d.cut || 0), h = d.human || {};
+  const tried = Number(d.tried || 0), cut = Number(d.cut || 0), h = d.human || {}, rd = d.redraw || {};
   const fails = (d.why || []).filter(w => w.why !== "抠成功").map(w => ({ why: w.why, n: Number(w.n), label: printWhy(w.why)[1], note: printWhy(w.why)[2] }));
   const skips = (d.skipped || []).map(w => ({ why: w.why, n: Number(w.n), label: PRINT_SKIP[w.why] || w.why, note: "" }));
   const ways = (d.ways || []).map(w => ({ why: w.why, n: Number(w.n), ok: Number(w.ok || 0), bad: Number(w.bad || 0), label: (PWAY[w.why] || [w.why])[0], note: "" }));
@@ -2124,9 +2127,13 @@ function printsGroups(d) {
       note: "程序抠成并通过了自检，还没有人确认它和主图一致。左边主图，右边抠出的印花。" },
     { key: "cand", label: "待确认 · 模型", nav: "模型找到的", icon: "sparkles", tone: "amber", n: Number(h.cand_pending || 0), confirm: true,
       note: "前三种办法抠不了，模型找到了印花（右边）。抽样看大约四成是完整的，要人看过才算数。" },
+    { key: "redraw_pending", label: "待确认 · 重画", nav: "UV1 重画的", icon: "sparkles", tone: "amber", n: Number(rd.pending || 0), confirm: true, redraw: true,
+      note: `抠不了的主图，UV1 上的模型照着重做的（右边）。只和它自己的主图比；文字、构图要和主图一致，细节纹理是重画的。还有 ${num(rd.waiting || 0)} 个归重画的没做。` },
     { sep: "你确认过的" },
     { key: "confirmed", label: "确认能用", nav: "能用", icon: "circle-check", tone: "green", n: Number(h.cut_ok || 0) + Number(h.cand_ok || 0), undo: true, note: "人看过、确认和主图一致的。" },
     { key: "rejected", label: "确认不能用", nav: "不能用", icon: "circle-x", tone: "red", n: Number(h.cut_bad || 0) + Number(h.cand_bad || 0), undo: true, note: "人看过、不能用的，归重画。" },
+    { key: "redraw_ok", label: "重画 · 确认能用", nav: "重画能用", icon: "circle-check", tone: "green", n: Number(rd.ok || 0), undo: true, redraw: true, note: "重画的里面，人看过、确认能用的。" },
+    { key: "redraw_bad", label: "重画 · 确认不能用", nav: "重画不能用", icon: "circle-x", tone: "red", n: Number(rd.bad || 0), undo: true, redraw: true, note: "重画的里面，人看过、不能用的。" },
     { sep: "程序的结果" },
     { key: "cut", label: "程序抠成", icon: "scissors", tone: "blue", n: cut, whys: ways, note: "通过了程序自检的全部，不管人看没看过。" },
     { key: "failed", label: "抠不了", icon: "ban", tone: "gray", n: tried - cut, whys: fails, note: "每种办法都说出了原因；归重画。" },
@@ -2175,7 +2182,8 @@ function printsList(g) {
   const why = g.whys && g.whys.find(w => w.why === printsWhy) || null, n = why ? why.n : g.n;
   const c = printsCache[g.key + ":" + (why ? why.why : "")] || { rows: [] }, left = Math.max(0, n - c.rows.length);
   const two = r => !!(r.thumb_url || g.key === "cut" || g.key === "pending");
-  const how = r => r.cut ? ppill("blue", (PWAY[r.why] || [0, "scissors"])[1], (PWAY[r.why] || [r.why])[0])
+  const RSTATE = { good: ["green", "circle-check", "和主图对得上"], look: ["amber", "triangle-alert", "请多看一眼"], bad: ["red", "circle-x", "和主图对不上"] };
+  const how = r => r.redraw ? ppill(...(RSTATE[r.state] || RSTATE.look)) + `<span>对上 ${num(r.like_main)} 点</span>` : r.cut ? ppill("blue", (PWAY[r.why] || [0, "scissors"])[1], (PWAY[r.why] || [r.why])[0])
     : g.key === "skipped" ? ppill("gray", "circle-minus", PRINT_SKIP[r.why] || r.why || "") : r.why ? ppill(r.thumb_url ? "amber" : "gray", r.thumb_url ? "sparkles" : "ban", printWhy(r.why)[1]) : "";
   const said = r => r.human === "ok" ? ppill("green", "circle-check", "能用") : r.human === "bad" ? ppill("red", "circle-x", "不能用：" + (r.human_why || "没说原因")) : "";
   const act = r => g.confirm ? `<div class="pact"><button class="pbtn yes" data-mark="ok" data-goods="${esc(r.goods_id)}">${pic("circle-check")}能用</button>
@@ -2183,7 +2191,7 @@ function printsList(g) {
     : g.undo ? `<div class="pact">${said(r)}<button class="pbtn" data-mark="" data-goods="${esc(r.goods_id)}">${pic("undo-2")}撤销</button></div>` : "";
   const card = r => `<div data-card="${esc(r.goods_id)}" class="pcard${two(r) ? " duo" : ""}">
       <div class="pics">${r.source ? `<figure><img src="${esc(r.source)}" loading="lazy" alt="主图"><figcaption>主图</figcaption></figure>` : `<div class="none">${pic("image", 20)}没有主图</div>`}
-        ${two(r) ? `<figure class="cut"><img src="${esc(r.thumb_url || "")}" loading="lazy" alt="抠出的印花"><figcaption>${r.cut ? "抠出的印花" : "模型圈出的"}</figcaption></figure>` : ""}</div>
+        ${two(r) ? `<figure class="cut"><img src="${esc(r.thumb_url || "")}" loading="lazy" alt="抠出的印花"><figcaption>${r.redraw ? "UV1 重画的" : r.cut ? "抠出的印花" : "模型圈出的"}</figcaption></figure>` : ""}</div>
       <div class="t" title="${esc(r.title || "")}">${esc(r.title || "商品 " + r.goods_id)}</div>
       <div class="s">${how(r)}${g.undo || g.confirm ? "" : said(r)}${r.sold != null ? `<span>卖出 ${esc(r.sold)}</span>` : ""}<span>${esc(r.goods_id)}</span></div>${act(r)}</div>`;
   const chips = g.whys && g.whys.length ? `<div class="pchips"><button data-pcat="${g.key}" class="${why ? "" : "on"}">全部 <b>${num(g.n)}</b></button>
@@ -2224,7 +2232,7 @@ async function printsMore(kind, key) {
   if (c.busy) return;
   c.busy = true; c.err = null;
   try {
-    const rows = (await api.printsRows(kind, key.slice(kind.length + 1) || null, c.rows.length)).rows || [];
+    const rows = (kind.startsWith("redraw_") ? await api.redrawRows(kind, c.rows.length) : await api.printsRows(kind, key.slice(kind.length + 1) || null, c.rows.length)).rows || [];
     c.rows.push(...rows); c.loaded = true; c.end = !rows.length;
   } catch (err) { c.err = err.message; }
   c.busy = false;
@@ -2236,11 +2244,16 @@ async function printsMore(kind, key) {
 async function printsMark(goods, human, why, kind, key) {
   const el = document.querySelector(`[data-card="${goods}"]`);
   if (el) el.style.opacity = 0.35;
-  try { await api.printsMark(goods, human, why, $("#reviewer").value.trim() || null); }
+  const redraw = kind.startsWith("redraw_");
+  try { await (redraw ? api.redrawMark : api.printsMark).call(api, goods, human, why, $("#reviewer").value.trim() || null); }
   catch (err) { if (el) el.style.opacity = 1; toast(err.message); return; }
   const c = printsCache[key], r = c && c.rows.find(x => x.goods_id === goods), h = printsData.human || (printsData.human = {});
   if (c) c.rows = c.rows.filter(x => x.goods_id !== goods);
-  if (r) {
+  if (r && redraw) {   // a redraw's answer moves it between its own three counts
+    const rd = printsData.redraw || (printsData.redraw = {}), name = v => v === "ok" ? "ok" : v === "bad" ? "bad" : "pending";
+    rd[name(r.human)] = Math.max(0, Number(rd[name(r.human)] || 0) - 1);
+    rd[name(human)] = Number(rd[name(human)] || 0) + 1;
+  } else if (r) {
     const pre = r.cut ? "cut_" : "cand_", name = v => v === "ok" ? "ok" : v === "bad" ? "bad" : "pending";
     h[pre + name(r.human)] = Math.max(0, Number(h[pre + name(r.human)] || 0) - 1);
     h[pre + name(human)] = Number(h[pre + name(human)] || 0) + 1;
@@ -2255,9 +2268,10 @@ async function printsMark(goods, human, why, kind, key) {
 async function refreshPrints() {
   if (view !== "prints") return;
   try {
-    const d = await api.prints();
+    // the redraws have their own counts (lg_redraws); a page whose function does not know them yet shows none
+    const [d, redraw] = await Promise.all([api.prints(), api.redraws().catch(() => ({}))]);
     if (view !== "prints") return;
-    printsData = { ...d, read_at: Date.now() }; printsCache = {};
+    printsData = { ...d, redraw, read_at: Date.now() }; printsCache = {};
     printsPaint();
   } catch (err) { $("#main").innerHTML = `<div class="dash prints"><div class="pempty red">${pic("circle-x", 20)}没读到：${esc(err.message)}</div></div>`; }
 }
