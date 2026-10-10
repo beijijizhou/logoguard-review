@@ -1941,6 +1941,8 @@ const PRINT_WHY = [   // what the cut-out said (its first words), a short name, 
   ["和空白衣服差得太多", "不像同一张底图", "和找到的底图差别太大，多半不是同一张底图。"],
   ["没认出衣服", "没认出衣服", "没有白底，也没有模特，按颜色也分不出中间那件衣服。"],
   ["印花太小", "印花太小", "抠出来的东西太小，像是没抠到真正的印花。"],
+  ["模型找到了印花，还不能自动确认", "模型找到，待验收", "前三种办法抠不了，换成让模型去找印花（SAM 3）。它找到了，右边是它圈出来的；但程序还不能自动确认它和主图上的印花完全一致，所以不算成功，等人看过再定。"],
+  ["模型找到的印花太小或太零散", "模型找到的太零散", "模型圈出来的东西太小，或者碎成很多块，多半没圈全。右边是它圈出来的。"],
   ["场景图，还没找到同款底图", "没有同款底图", "场景图或模特图，目录里没有另外几张用同一张样机底图的图，算不出空白衣服。"],
   ["和同款底图相减后自检没过", "相减后自检没过", "找到了同款底图，但相减出来的印花没通过自检（范围不对、贴着衣服边，或那一块的空白衣服算得不可靠）。"],
 ];
@@ -2003,8 +2005,8 @@ function printsList(g) {
   const why = g.whys && g.whys.find(w => w.why === printsWhy) || null, n = why ? why.n : g.n;
   const c = printsCache[g.key + ":" + (why ? why.why : "")] || { rows: [] }, left = Math.max(0, n - c.rows.length);
   const tag = r => why ? "" : g.key === "cut" ? `<span class="tag" style="color:var(--green)">${esc((g.whys.find(w => w.why === r.why) || {}).label || "")}</span>` : g.key === "failed" ? `<span class="tag">${esc(printWhy(r.why)[1])}</span>` : g.key === "skipped" ? `<span class="tag">${esc(PRINT_SKIP[r.why] || r.why || "")}</span>` : "";
-  const card = r => `<div class="pcard${g.key === "cut" ? " duo" : ""}">
-      <div class="pics">${r.source ? `<img src="${esc(r.source)}" loading="lazy" alt="">` : `<div class="none">没有主图</div>`}${g.key === "cut" ? `<img class="cut" src="${esc(r.thumb_url || "")}" loading="lazy" alt="">` : ""}</div>
+  const card = r => `<div class="pcard${g.key === "cut" || r.thumb_url ? " duo" : ""}">
+      <div class="pics">${r.source ? `<img src="${esc(r.source)}" loading="lazy" alt="">` : `<div class="none">没有主图</div>`}${g.key === "cut" || r.thumb_url ? `<img class="cut" src="${esc(r.thumb_url || "")}" loading="lazy" alt="">` : ""}</div>
       <div class="t" title="${esc(r.title || "")}">${esc(r.title || "商品 " + r.goods_id)}</div>
       <div class="s">${tag(r)}${r.sold != null ? `<span>卖出 ${esc(r.sold)}</span>` : ""}${g.key === "cut" && r.px ? `<span>印花 ${r.px[0]}×${r.px[1]}</span>` : ""}<span title="商品号">${esc(r.goods_id)}</span></div></div>`;
   const chips = g.whys && g.whys.length ? `<div class="pchips"><button data-pcat="${g.key}" class="${why ? "" : "on"}">全部 <b>${num(g.n)}</b></button>
@@ -2012,7 +2014,7 @@ function printsList(g) {
   return `<div class="phead big"><h3>${esc(g.label)}${why ? " · " + esc(why.label) : ""}</h3><b>${num(n)}</b><span class="muted">个商品</span></div>
     <div class="muted" style="margin-top:-8px">${esc(why && why.note || g.note || "")}</div>
     ${chips}
-    <div class="pgrid${g.key === "cut" ? " duo" : ""}">${c.rows.map(card).join("") || `<span class="muted">${c.err ? esc(c.err) : c.loaded ? "这一组没有商品。" : "加载中…"}</span>`}</div>
+    <div class="pgrid${g.key === "cut" || c.rows.some(r => r.thumb_url) ? " duo" : ""}">${c.rows.map(card).join("") || `<span class="muted">${c.err ? esc(c.err) : c.loaded ? "这一组没有商品。" : "加载中…"}</span>`}</div>
     ${c.loaded && left > 0 && !c.end ? `<div class="pmore"><button id="printsMore">再看 96 个</button><span class="muted">已显示 ${num(c.rows.length)} / ${num(n)}</span></div>` : ""}
     ${c.loaded && c.rows.length && (left <= 0 || c.end) ? `<div class="pmore"><span class="muted">${num(c.rows.length)} 个都在上面了。</span></div>` : ""}`;
 }
