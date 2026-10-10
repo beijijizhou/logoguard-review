@@ -146,7 +146,7 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .pread { margin-left:auto; display:flex; align-items:center; gap:8px; font-size:12px; color:var(--p-3); font-variant-numeric:tabular-nums; }
 .pbtn { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer;
         background:var(--p-card); color:var(--p-fg); border:1px solid var(--gray-border); }
-.pbtn:hover { background:var(--gray-bg); }
+.pbtn:hover { background:var(--gray-bg); } a.pbtn { text-decoration:none; }
 .pbtn.primary { background:var(--blue-solid); border-color:var(--blue-solid); color:#fff; } .pbtn.primary:hover { filter:brightness(.95); background:var(--blue-solid); }
 .pbtn.yes { background:var(--green-solid); border-color:var(--green-solid); color:#fff; font-weight:600; padding:0 16px; } .pbtn.yes:hover { filter:brightness(.95); background:var(--green-solid); }
 .pbtn.no { color:var(--red-text); padding:0 8px; } .pbtn.no:hover { background:var(--red-bg); border-color:var(--red-border); }
@@ -2135,6 +2135,9 @@ function printsGroups(d) {
     { key: "rejected", label: "确认不能用", nav: "不能用", icon: "circle-x", tone: "red", n: Number(h.cut_bad || 0) + Number(h.cand_bad || 0), undo: true, note: "人看过、不能用的，归重画。" },
     { key: "redraw_ok", label: "重画 · 确认能用", nav: "重画能用", icon: "circle-check", tone: "green", n: Number(rd.ok || 0), undo: true, redraw: true, note: "重画的里面，人看过、确认能用的。" },
     { key: "redraw_bad", label: "重画 · 确认不能用", nav: "重画不能用", icon: "circle-x", tone: "red", n: Number(rd.bad || 0), undo: true, redraw: true, note: "重画的里面，人看过、不能用的。" },
+    { sep: "印刷稿" },
+    { key: "final", label: "放大后的印刷稿", nav: "放大后的稿", icon: "printer", tone: "blue", n: Number(d.final || 0), final: true,
+      note: "抠出的印花放大到印刷尺寸（270 毫米宽，180 dpi，1913 像素）。右边就是要打的图，点“看原大”按实际像素看。目前只做了几张试样。" },
     { sep: "程序的结果" },
     { key: "cut", label: "程序抠成", icon: "scissors", tone: "blue", n: cut, whys: ways, note: "通过了程序自检的全部，不管人看没看过。" },
     { key: "failed", label: "抠不了", icon: "ban", tone: "gray", n: tried - cut, whys: fails, note: "每种办法都说出了原因；归重画。衣服上没有印花的除外：不做稿，也不重画。" },
@@ -2190,11 +2193,15 @@ function printsList(g) {
   const act = r => g.confirm ? `<div class="pact"><button class="pbtn yes" data-mark="ok" data-goods="${esc(r.goods_id)}">${pic("circle-check")}能用</button>
         <span class="psmall">不能用：</span>${PBAD.map(b => `<button class="pbtn no" data-mark="bad" data-goods="${esc(r.goods_id)}" data-why="${b}">${b}</button>`).join("")}</div>`
     : g.undo ? `<div class="pact">${said(r)}<button class="pbtn" data-mark="" data-goods="${esc(r.goods_id)}">${pic("undo-2")}撤销</button></div>` : "";
+  const fin = r => { const k = r.checks || {};
+    return `<div class="pact">${ppill(Number(k.final_times) > 3.5 ? "amber" : "green", Number(k.final_times) > 3.5 ? "triangle-alert" : "circle-check", `放大 ${Number(k.final_times).toFixed(1)} 倍`)}
+      <span class="psmall">主图上 ${num(k.final_from)} 像素宽 → ${k.final_px ? num(k.final_px[0]) + " × " + num(k.final_px[1]) : ""} 像素</span>
+      <a class="pbtn" href="${esc(r.thumb_url || "#")}" target="_blank" rel="noopener">${pic("image")}看原大</a></div>`; };
   const card = r => `<div data-card="${esc(r.goods_id)}" class="pcard${two(r) ? " duo" : ""}">
       <div class="pics">${r.source ? `<figure><img src="${esc(r.source)}" loading="lazy" alt="主图"><figcaption>主图</figcaption></figure>` : `<div class="none">${pic("image", 20)}没有主图</div>`}
-        ${two(r) ? `<figure class="cut"><img src="${esc(r.thumb_url || "")}" loading="lazy" alt="抠出的印花"><figcaption>${r.redraw ? "UV1 重画的" : r.cut ? "抠出的印花" : "模型圈出的"}</figcaption></figure>` : ""}</div>
+        ${two(r) ? `<figure class="cut"><img src="${esc(r.thumb_url || "")}" loading="lazy" alt="${g.final ? "放大后的印刷稿" : "抠出的印花"}"><figcaption>${g.final ? "印刷稿" : r.redraw ? "UV1 重画的" : r.cut ? "抠出的印花" : "模型圈出的"}</figcaption></figure>` : ""}</div>
       <div class="t" title="${esc(r.title || "")}">${esc(r.title || "商品 " + r.goods_id)}</div>
-      <div class="s">${how(r)}${g.undo || g.confirm ? "" : said(r)}${r.sold != null ? `<span>卖出 ${esc(r.sold)}</span>` : ""}<span>${esc(r.goods_id)}</span></div>${act(r)}</div>`;
+      <div class="s">${how(r)}${g.undo || g.confirm ? "" : said(r)}${r.sold != null ? `<span>卖出 ${esc(r.sold)}</span>` : ""}<span>${esc(r.goods_id)}</span></div>${g.final ? fin(r) : act(r)}</div>`;
   const chips = g.whys && g.whys.length ? `<div class="pchips"><button data-pcat="${g.key}" class="${why ? "" : "on"}">全部 <b>${num(g.n)}</b></button>
       ${g.whys.map(w => `<button data-pcat="${g.key}" data-pwhy="${esc(w.why)}" class="${why && why.why === w.why ? "on" : ""}">${esc(w.label)} <b>${num(w.n)}</b></button>`).join("")}</div>` : "";
   const state = c.err ? `<div class="pempty red">${pic("circle-x", 20)}没读到：${esc(c.err)}</div>` : c.loaded ? `<div class="pempty">${pic(g.confirm ? "circle-check" : "info", 20)}${g.confirm ? "这一组都看完了。" : "这一组没有商品。"}</div>`
@@ -2202,7 +2209,7 @@ function printsList(g) {
   return `<div class="plisthead"><span class="phicon ${g.tone}">${pic(g.icon, 20)}</span><h3>${esc(g.label)}${why ? " · " + esc(why.label) : ""}</h3><span class="pcount">${num(n)} 个</span>
       <span class="psmall">${esc(why && why.note || g.note || "")}</span></div>
     ${chips}
-    ${c.rows.length ? `<div class="pgrid${c.rows.some(two) ? " duo" : ""}${g.confirm ? " judge" : ""}">${c.rows.map(card).join("")}</div>` : state}
+    ${c.rows.length ? `<div class="pgrid${c.rows.some(two) ? " duo" : ""}${g.confirm || g.final ? " judge" : ""}">${c.rows.map(card).join("")}</div>` : state}
     ${c.loaded && left > 0 && !c.end && c.rows.length ? `<div class="pnext"><button class="pbtn" id="printsMore">${pic("chevron-right")}再看 96 个</button><span class="psmall">已显示 ${num(c.rows.length)} / ${num(n)}</span></div>` : ""}`;
 }
 function printsPaint() {
