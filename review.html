@@ -1932,15 +1932,19 @@ const PRINT_WHY = [   // what the cut-out said (its first words), a short name, 
   ["衣服不是纯色", "衣服不是纯色", "衣服本身有几种颜色（拼色、扎染、条纹），或者印花占满了整件，分不出哪里是布、哪里是印花。"],
   ["画面里不止一件", "不止一件东西", "主图里有两件以上的东西（正反面并排、多件装、旁边摆着配饰），不知道该抠哪一件。"],
   ["印花顶到衣服边", "印花顶到衣服边", "抠出来了，但自检发现印花贴着衣服边缘，很可能被切掉了一部分，所以不算成功。"],
+  ["场景图，还没找到同款底图", "没有同款底图", "场景图或模特图，目录里没有另外几张用同一张样机底图的图，算不出空白衣服。"],
+  ["和同款底图相减后自检没过", "相减后自检没过", "找到了同款底图，但相减出来的印花没通过自检（范围不对、贴着衣服边，或那一块的空白衣服算得不可靠）。"],
 ];
 const printWhy = w => PRINT_WHY.find(x => String(w || "").startsWith(x[0])) || [w, String(w || "").replace(/（.*?）/g, ""), ""];
 function printsGroups(d) {
   const tried = Number(d.tried || 0), cut = Number(d.cut || 0);
   const fails = (d.why || []).filter(w => w.why !== "抠成功").map(w => ({ why: w.why, n: Number(w.n), label: printWhy(w.why)[1], note: printWhy(w.why)[2] }));
   const skips = (d.skipped || []).map(w => ({ why: w.why, n: Number(w.n), label: PRINT_SKIP[w.why] || w.why, note: "" }));
+  const WAY = { flat: ["白底抠图", "白底、平铺的主图：印花就是和衣服颜色不一样的那部分。"], template: ["同款底图相减", "场景图、模特图：从用同一张样机底图的几张图里算出空白衣服，主图减去它就是印花，褶皱、阴影、手臂都不会带进来。"] };
+  const ways = (d.ways || []).map(w => ({ why: w.why, n: Number(w.n), label: (WAY[w.why] || [w.why])[0], note: (WAY[w.why] || ["", ""])[1] }));
   return [
     { key: "overview", label: "总览" },
-    { key: "cut", label: "抠成功", n: cut, color: "var(--green)", note: "左边是主图，右边是抠出的印花。抠出的印花放大到印刷尺寸后就是印刷稿。" },
+    { key: "cut", label: "抠成功", n: cut, color: "var(--green)", whys: ways, note: "左边是主图，右边是抠出的印花。抠出的印花放大到印刷尺寸后就是印刷稿。" },
     { key: "failed", label: "抠不了", n: tried - cut, color: "var(--amber)", whys: fails, note: "程序自己说出了原因；这些主图转给 UV1 的改图模型重画。" },
     { key: "no_main", label: "没有主图", n: Number(d.no_main || 0), color: "#9a9aa2", note: "目录里要做稿，但采集时没有拿到主图，还没法试抠图。" },
     { key: "skipped", label: "不做稿", n: (skips || []).reduce((a, w) => a + w.n, 0), color: "#cfcfd6", whys: skips, note: "采集那一步已经标好这些商品不做印刷稿：不进抠图，也不算在成功率里。" },
@@ -1965,7 +1969,9 @@ function printsOverview(d, groups) {
       <div class="panel">
         <div class="phead"><h3>抠图结果</h3><span class="muted">要做稿、有主图的 ${num(tried)} 个</span></div>
         <div class="pbig"><b>${pct(cut, tried)}</b><span>抠成功 ${num(cut)} 个 · 转重画 ${num(tried - cut)} 个 · 每张 ${d.seconds == null ? "–" : Number(d.seconds)} 秒</span></div>
-        <div class="psub">抠不了的原因</div>${failed.whys.length ? bars(failed, tried) : `<span class="muted">没有。</span>`}
+        <div class="psub">抠成功的办法</div>${groups.find(g => g.key === "cut").whys.map(w => `<button class="pbar" data-pcat="cut" data-pwhy="${esc(w.why)}"><span class="l">${esc(w.label)}</span>
+          <span class="b"><i style="width:${(100 * w.n / Math.max(cut, 1)).toFixed(1)}%;background:var(--green)"></i></span><span class="c">${num(w.n)}</span><span class="p">${pct(w.n, tried)}</span></button>`).join("")}
+        <div class="psub" style="margin-top:12px">抠不了的原因</div>${failed.whys.length ? bars(failed, tried) : `<span class="muted">没有。</span>`}
       </div>
       <div class="panel">
         <div class="phead"><h3>不做稿的原因</h3><span class="muted">${num(skipped.n)} 个，采集时标的</span></div>
@@ -1986,7 +1992,7 @@ function printsOverview(d, groups) {
 function printsList(g) {
   const why = g.whys && g.whys.find(w => w.why === printsWhy) || null, n = why ? why.n : g.n;
   const c = printsCache[g.key + ":" + (why ? why.why : "")] || { rows: [] }, left = Math.max(0, n - c.rows.length);
-  const tag = r => why ? "" : g.key === "failed" ? `<span class="tag">${esc(printWhy(r.why)[1])}</span>` : g.key === "skipped" ? `<span class="tag">${esc(PRINT_SKIP[r.why] || r.why || "")}</span>` : "";
+  const tag = r => why ? "" : g.key === "cut" ? `<span class="tag" style="color:var(--green)">${esc((g.whys.find(w => w.why === r.why) || {}).label || "")}</span>` : g.key === "failed" ? `<span class="tag">${esc(printWhy(r.why)[1])}</span>` : g.key === "skipped" ? `<span class="tag">${esc(PRINT_SKIP[r.why] || r.why || "")}</span>` : "";
   const card = r => `<div class="pcard${g.key === "cut" ? " duo" : ""}">
       <div class="pics">${r.source ? `<img src="${esc(r.source)}" loading="lazy" alt="">` : `<div class="none">没有主图</div>`}${g.key === "cut" ? `<img class="cut" src="${esc(r.thumb_url || "")}" loading="lazy" alt="">` : ""}</div>
       <div class="t" title="${esc(r.title || "")}">${esc(r.title || "商品 " + r.goods_id)}</div>
