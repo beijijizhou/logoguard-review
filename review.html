@@ -518,6 +518,7 @@ const api = REMOTE ? {
   cache() { return this.call({ action: "cache", days: 14 }); },
   sonnet() { return this.call({ action: "sonnet" }); },
   prints() { return this.call({ action: "prints" }); },
+  printsRows(ok, offset) { return this.call({ action: "prints_rows", ok, offset }); },
   sonnetRule(n) { return this.call({ action: "sonnet_rule", min_orders: n }); },
   machines(since) { return this.call({ action: "machines", since }); },
   machine(machine, since, hours) { return this.call({ action: "machine", machine, since, hours }); },
@@ -1895,6 +1896,8 @@ function printsHtml(d) {
     <div class="cap"><div class="what">抠成功 · 印花 ${r.px ? r.px[0] + "×" + r.px[1] : ""} 像素</div><div class="when">商品 ${esc(r.goods_id)} · ${Number(r.seconds)} 秒${r.checks && r.checks.dropped ? ` · 去掉水印/领标 ${r.checks.dropped} 处` : ""}</div></div></div>`;
   const badCard = r => `<div class="dcard review"><img src="${esc(r.source)}" loading="lazy" alt="">
     <div class="cap"><div class="what">抠不了：${esc(r.why || "")}</div><div class="when">商品 ${esc(r.goods_id)} · 转 UV1 重画</div></div></div>`;
+  printsHtml.card = { true: cutCard, false: badCard };
+  const more = (ok, shown, total) => total > shown ? `<div style="margin-top:10px"><button class="linkish" data-more="${ok}" data-shown="${shown}" data-total="${total}">再看 96 个（还有 ${num(total - shown)} 个没显示）</button></div>` : "";
   return `<div class="dash">
     <div class="panel hero">
       <div class="mhead"><b class="nm">印刷稿</b><span class="muted">从 Temu 主图做出印刷稿：先抠图，抠不了的再让 UV1 重画</span>
@@ -1919,10 +1922,10 @@ function printsHtml(d) {
     <div class="panel"><div class="mhead"><h2 style="margin:0">目录里不做稿的商品</h2><span class="muted">采集那一步已经标好，不进抠图，也不算在成功率里</span></div>
       ${(d.skipped || []).length ? `<table><tr><th>原因</th><th>商品数</th><th>占目录</th></tr>${d.skipped.map(skip).join("")}</table>` : `<span class="muted">没有。</span>`}
       ${Number(all.tried) ? `<div class="muted" style="margin-top:8px">另：第一次是对全部采集到的主图跑的（含不做稿的），${num(all.tried)} 张里抠成 ${num(all.cut)} 张（${pct(all.cut, all.tried)}）。那个数的分母不对，以上面按商品的为准。</div>` : ""}</div>
-    <div class="panel"><div class="mhead"><h2 style="margin:0">抠成功的</h2><span class="muted">${(d.cut_rows || []).length} 个 · 左主图，右抠出的印花（深色格子 = 透明）</span></div>
-      <div class="feed mfeed">${(d.cut_rows || []).map(cutCard).join("") || `<span class="muted">还没有。</span>`}</div></div>
-    <div class="panel"><div class="mhead"><h2 style="margin:0">抠不了、转重画的</h2><span class="muted">每种原因最多 24 个，共 ${(d.failed_rows || []).length} 个 · 每张写着原因</span></div>
-      <div class="feed mfeed">${(d.failed_rows || []).map(badCard).join("") || `<span class="muted">还没有。</span>`}</div></div>
+    <div class="panel"><div class="mhead"><h2 style="margin:0">抠成功的</h2><span class="muted">共 ${num(cut)} 个，先显示 ${(d.cut_rows || []).length} 个，底下可以接着看 · 左主图，右抠出的印花（深色格子 = 透明）</span></div>
+      <div class="feed mfeed" id="printsList_true">${(d.cut_rows || []).map(cutCard).join("") || `<span class="muted">还没有。</span>`}</div>${more(true, (d.cut_rows || []).length, cut)}</div>
+    <div class="panel"><div class="mhead"><h2 style="margin:0">抠不了、转重画的</h2><span class="muted">共 ${num(tried - cut)} 个，先显示 ${(d.failed_rows || []).length} 个，按原因排，底下可以接着看</span></div>
+      <div class="feed mfeed" id="printsList_false">${(d.failed_rows || []).map(badCard).join("") || `<span class="muted">还没有。</span>`}</div>${more(false, (d.failed_rows || []).length, tried - cut)}</div>
     </div>`;
 }
 async function refreshPrints() {
@@ -1932,6 +1935,18 @@ async function refreshPrints() {
     if (view !== "prints") return;
     $("#main").innerHTML = printsHtml(d);
     $("#printsReload").onclick = refreshPrints;
+    document.querySelectorAll("#main [data-more]").forEach(b => b.onclick = async () => {
+      const ok = b.dataset.more === "true", total = Number(b.dataset.total);
+      b.disabled = true;
+      try {
+        const r = await api.printsRows(ok, Number(b.dataset.shown));
+        $("#printsList_" + ok).insertAdjacentHTML("beforeend", (r.rows || []).map(printsHtml.card[ok]).join(""));
+        b.dataset.shown = Number(b.dataset.shown) + (r.rows || []).length;
+        const left = total - Number(b.dataset.shown);
+        if (left <= 0 || !(r.rows || []).length) b.parentNode.remove(); else b.textContent = `再看 96 个（还有 ${num(left)} 个没显示）`;
+      } catch (err) { alert(err.message); }
+      b.disabled = false;
+    });
   } catch (err) { $("#main").innerHTML = `<div class="empty">${esc(err.message)}</div>`; }
 }
 
