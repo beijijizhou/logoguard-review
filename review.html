@@ -198,6 +198,8 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .pchips button.on { background:var(--blue-bg); border-color:var(--blue-border); color:var(--blue-text); font-weight:600; } .pchips button.on b { color:inherit; }
 .pgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:16px; } .pgrid.duo { grid-template-columns:repeat(auto-fill,minmax(520px,1fr)); }
 .pgrid.duo.judge { grid-template-columns:repeat(auto-fill,minmax(760px,1fr)); } .pgrid.judge .pcard figure img { height:440px; }   /* judged by: each picture 360 wide at the least */
+.dcell { min-width:48px; height:28px; padding:0 8px; border:1px solid transparent; border-radius:8px; background:transparent; font:inherit; font-variant-numeric:tabular-nums; color:var(--p-fg); cursor:pointer; }
+.dcell:hover { border-color:var(--gray-border); } .dcell.diff { background:var(--blue-bg); color:var(--blue-text); } .dcell.on { border-color:var(--blue-solid); }
 .pcard { display:flex; flex-direction:column; background:var(--p-card); border:1px solid var(--gray-border); border-radius:12px; overflow:hidden; }
 .pcard .pics { display:grid; gap:1px; background:var(--gray-border); } .pcard.duo .pics { grid-template-columns:1fr 1fr; }
 .pcard figure { position:relative; margin:0; background:#FFFFFF; } .pcard figure.cut { background:var(--gray-solid); }
@@ -652,6 +654,8 @@ const api = REMOTE ? {
   printsMark(goods_id, human, why, by) { return this.call({ action: "prints_mark", goods_id, human, why, by }); },
   printsFinalMark(goods_id, human, why, by) { return this.call({ action: "prints_final_mark", goods_id, human, why, by }); },
   redraws() { return this.call({ action: "redraws" }); },
+  decisions() { return this.call({ action: "decisions" }); },
+  decisionRows(plugin, ours, offset) { return this.call({ action: "decision_rows", plugin, ours, offset }); },
   redrawRows(kind, offset) { return this.call({ action: "redraw_rows", kind, offset }); },
   redrawMark(goods_id, human, why, by) { return this.call({ action: "redraw_mark", goods_id, human, why, by }); },
   sonnetRule(n) { return this.call({ action: "sonnet_rule", min_orders: n }); },
@@ -2130,6 +2134,7 @@ function printsGroups(d) {
   // tone: which of the standard's five colours the heading is (one colour, one meaning); icon: its Lucide shape
   return [
     { key: "overview", label: "总览", icon: "layout-dashboard", tone: "blue" },
+    { key: "decide", label: "做不做", icon: "shirt", tone: "blue" },
     { sep: "等你确认" },
     { key: "pending", label: "待确认", nav: "程序抠成的", icon: "clock", tone: "amber", n: Number(h.cut_pending || 0), confirm: true, whys: ways.map(w => ({ ...w, n: w.n - w.ok - w.bad })),
       note: "程序抠成并通过了自检，还没有人确认它和主图一致。左边主图，右边抠出的印花。" },
@@ -2153,6 +2158,58 @@ function printsGroups(d) {
     { key: "no_main", label: "没有主图", icon: "image", tone: "gray", n: Number(d.no_main || 0), note: "要做稿，但采集时没有拿到主图。" },
     { key: "skipped", label: "不做稿", icon: "circle-minus", tone: "gray", n: skips.reduce((a, w) => a + w.n, 0), whys: skips, note: "采集那一步标了不做印刷稿，不算在上面任何一个数里。" },
   ];
+}
+// ---- make or skip: LogoGuard's own reading of every collected product, beside the plugin's ----
+// The plugin only collects; whether a product is made is decided here (the owner, 2026-10-10). Until the switch
+// is made nothing acts on this: the table shows where the two differ, a cell opens its products.
+const DWHY = { make: "该做", "no print": "没有印花", "print all over": "满版印花", "not black or white": "不是黑色或白色",
+  "not a black shirt": "不是黑色 T 恤", "not a men's T-shirt": "不是男款 T 恤", "not a short-sleeved T-shirt": "不是短袖 T 恤", "a photograph, not a mockup": "实拍照片" };
+const dname = w => DWHY[w] || w;
+let decideCell = null, decideRows = {};
+function decideView(d) {
+  if (!d) return `<div class="pempty red">${pic("circle-x", 20)}没读到“做不做”的数据。</div>`;
+  if (!Number(d.decided)) return `<div class="pempty">${pic("info", 20)}LogoGuard 还没有判过任何商品。</div>`;
+  const t = d.table || [], plugins = [...new Set(t.map(x => x.plugin))], ours = [...new Set(t.map(x => x.ours))];
+  const sum = (f) => t.filter(f).reduce((a, x) => a + Number(x.n), 0);
+  plugins.sort((a, b) => (b === "make") - (a === "make") || sum(x => x.plugin === b) - sum(x => x.plugin === a));
+  ours.sort((a, b) => (b === "make") - (a === "make") || sum(x => x.ours === b) - sum(x => x.ours === a));
+  const cell = (p, o) => { const n = sum(x => x.plugin === p && x.ours === o), on = decideCell && decideCell.plugin === p && decideCell.ours === o;
+    return `<td class="r">${n ? `<button class="dcell${on ? " on" : ""}${(p === "make") !== (o === "make") ? " diff" : ""}" data-dcell="${esc(p)}|${esc(o)}">${num(n)}</button>` : `<span class="psmall">–</span>`}</td>`; };
+  const key = decideCell ? decideCell.plugin + "|" + decideCell.ours : "", c = decideRows[key], n = decideCell ? sum(x => x.plugin === decideCell.plugin && x.ours === decideCell.ours) : 0;
+  const saw = s => [["颜色", s.colour], ["印花", s.print == null ? null : s.print ? "有" : "没有"], ["满版", s.allover == null ? null : s.allover ? "是" : "不是"], ["款式", s.type]]
+    .filter(x => x[1] != null && x[1] !== "").map(x => `<span>${x[0]}：${esc(x[1])}</span>`).join("") + ((s.title || []).length ? `<span>标题里的词：${esc(s.title.join("、"))}</span>` : "");
+  const card = r => `<div class="pcard"><div class="pics">${r.source ? `<figure><img src="${esc(r.source)}" loading="lazy" alt="主图"><figcaption>主图</figcaption></figure>` : `<div class="none">${pic("image", 20)}没有主图</div>`}</div>
+      <div class="t" title="${esc(r.title || "")}">${esc(r.title || "商品 " + r.goods_id)}</div>
+      <div class="s">${ppill(r.ours === "make" ? "green" : "gray", r.ours === "make" ? "circle-check" : "circle-minus", "LogoGuard：" + dname(r.ours))}${ppill("gray", "info", "插件：" + dname(r.plugin))}</div>
+      <div class="s">${pic("sparkles", 14)}<span>小模型看到的</span>${saw(r.seen || {})}</div>
+      <div class="s">${r.sold != null ? `<span>卖出 ${esc(r.sold)}</span>` : ""}<span>${esc(r.goods_id)}</span></div></div>`;
+  return `<div class="ppanel">
+      <div class="pkey"><div class="pnum"><b>${num(d.make)}</b><span>/ ${num(d.decided)}</span></div>
+        <div class="pkeytxt"><div>LogoGuard 判为该做的商品</div><div class="psmall">按插件自己的判断是 ${num(d.plugin_make)} 个 · 采到主图的共 ${num(d.products)} 个${d.last ? " · 最近一次判断 " + new Date(d.last).toLocaleString("zh-CN", { hour12: false }) : ""}</div></div></div>
+      <div class="pcall blue">${pic("info", 20)}<div><b>现在只是对比，还没有生效</b><span>建产品时用的仍是插件的判断。表里标蓝的格子是两边结论不一样的，点一个数看是哪些商品。</span></div></div></div>
+    <div class="ppanel"><div class="ptitle"><h3>插件说的（行）对 LogoGuard 说的（列）</h3><span class="psmall">点格子里的数看商品</span></div>
+      <div style="overflow-x:auto"><table class="ptab"><tr><th>插件的结论</th>${ours.map(o => `<th class="r">${esc(dname(o))}</th>`).join("")}<th class="r">合计</th></tr>
+        ${plugins.map(p => `<tr><td>${esc(dname(p))}</td>${ours.map(o => cell(p, o)).join("")}<td class="r">${num(sum(x => x.plugin === p))}</td></tr>`).join("")}
+        <tr><td><b>合计</b></td>${ours.map(o => `<td class="r"><b>${num(sum(x => x.ours === o))}</b></td>`).join("")}<td class="r"><b>${num(d.decided)}</b></td></tr></table></div></div>
+    <details class="ppanel pmore"><summary>${pic("info")}LogoGuard 是按什么判的</summary>
+      <p>一个商品默认该做，除非碰到下面任何一条，从上往下查：</p>
+      <p><b>不是男款 T 恤</b>：标题里有女款、童款的词，并且没有同时写男款或通用。<b>不是短袖 T 恤</b>：标题里有卫衣、长袖、背心等词，或者小模型看图说不是短袖。</p>
+      <p><b>没有印花</b>、<b>满版印花</b>、<b>不是黑色或白色</b>：小模型看主图回答。黑色和白色都做；实拍照片不再跳过。</p>
+      <p>小模型（${esc(d.model || "本地模型")}）每个商品回答四项：衣服颜色、衣服上有没有印花、是不是满版、什么款式。四项答不全的不下结论，留到下次再问。每张卡片上写着它看到了什么。</p></details>
+    ${decideCell ? `<div class="plisthead"><span class="phicon blue">${pic("shirt", 20)}</span><h3>插件：${esc(dname(decideCell.plugin))} · LogoGuard：${esc(dname(decideCell.ours))}</h3><span class="pcount">${num(n)} 个</span>
+        <span class="psmall">按卖出数量从多到少</span></div>
+      ${c && c.rows.length ? `<div class="pgrid">${c.rows.map(card).join("")}</div>` : c && c.err ? `<div class="pempty red">${pic("circle-x", 20)}没读到：${esc(c.err)}</div>` : `<div class="pempty">${pic("refresh-cw", 20)}读取中…</div>`}
+      ${c && c.rows.length && c.rows.length < n && !c.end ? `<div class="pnext"><button class="pbtn" id="decideMore">${pic("chevron-right")}再看 96 个</button><span class="psmall">已显示 ${num(c.rows.length)} / ${num(n)}</span></div>` : ""}` : ""}`;
+}
+async function decideMore() {
+  if (!decideCell) return;
+  const key = decideCell.plugin + "|" + decideCell.ours, c = decideRows[key] || (decideRows[key] = { rows: [] });
+  if (c.busy) return;
+  c.busy = true; c.err = null;
+  try { const rows = (await api.decisionRows(decideCell.plugin, decideCell.ours, c.rows.length)).rows || []; c.rows.push(...rows); c.end = !rows.length; }
+  catch (err) { c.err = err.message; }
+  c.busy = false;
+  if (printsCat === "decide") printsPaint();
 }
 const ppill = (tone, icon, text) => `<span class="ppill ${tone}">${pic(icon, 14)}${esc(text)}</span>`;
 function printsOverview(d, groups) {
@@ -2245,7 +2302,9 @@ function printsPaint() {
     <div class="phead"><h2>印刷稿</h2><span class="psmall">从 Temu 主图做出印刷稿：能抠的抠下来，抠不了的归重画</span>
       <form class="pfind" id="printsFind">${pic("search")}<input type="search" value="${esc(printsQ)}" placeholder="商品编号，或标题里的词，回车" aria-label="按商品编号或标题查"></form>
       <span class="pread">读取于 ${new Date(d.read_at).toLocaleTimeString("zh-CN", { hour12: false })}<button class="pbtn" id="printsReload">${pic("refresh-cw")}刷新</button></span></div>
-    ${g.key === "overview" ? printsOverview(d, groups) : printsList(g)}</div>`;
+    ${g.key === "overview" ? printsOverview(d, groups) : g.key === "decide" ? decideView(d.decide) : printsList(g)}</div>`;
+  document.querySelectorAll("#main [data-dcell]").forEach(b => b.onclick = () => { const [p, o] = b.dataset.dcell.split("|"); decideCell = { plugin: p, ours: o }; printsPaint(); decideMore(); });
+  if ($("#decideMore")) $("#decideMore").onclick = decideMore;
   $("#printsReload").onclick = refreshPrints;
   $("#printsFind").onsubmit = e => { e.preventDefault(); printsFind(e.target.querySelector("input").value.trim()); };
   document.querySelectorAll("[data-pcat]").forEach(b => b.onclick = () => {
@@ -2263,7 +2322,7 @@ function printsPaint() {
   }
   document.querySelectorAll("#main [data-mark]").forEach(b => b.onclick = () => printsMark(b.dataset.goods, b.dataset.mark, b.dataset.why || null, g.key, key));
   document.querySelectorAll("#main [data-fmark]").forEach(b => b.onclick = () => printsFinalMark(b.dataset.goods, b.dataset.fmark, b.dataset.why || null, key));
-  if (g.key !== "overview" && !printsCache[key]) printsMore(g.key, key);
+  if (g.key !== "overview" && g.key !== "decide" && !printsCache[key]) printsMore(g.key, key);
 }
 async function printsFinalMark(goods, human, why, key) {
   // the answer on an enlarged file stays on its card (the list is not a queue): the card shows it, the heading counts it
@@ -2334,9 +2393,9 @@ async function refreshPrints() {
   if (view !== "prints") return;
   try {
     // the redraws have their own counts (lg_redraws); a page whose function does not know them yet shows none
-    const [d, redraw] = await Promise.all([api.prints(), api.redraws().catch(() => ({}))]);
+    const [d, redraw, decide] = await Promise.all([api.prints(), api.redraws().catch(() => ({})), api.decisions().catch(() => null)]);
     if (view !== "prints") return;
-    printsData = { ...d, redraw, read_at: Date.now() }; printsCache = {};
+    printsData = { ...d, redraw, decide, read_at: Date.now() }; printsCache = {};
     printsPaint();
   } catch (err) { $("#main").innerHTML = `<div class="dash prints"><div class="pempty red">${pic("circle-x", 20)}没读到：${esc(err.message)}</div></div>`; }
 }
