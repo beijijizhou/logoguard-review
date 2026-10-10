@@ -143,6 +143,8 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .dash.prints h2 { margin:0; font-size:24px; font-weight:600; color:var(--p-fg); } .dash.prints h3 { margin:0; font-size:16px; font-weight:600; color:var(--p-fg); }
 .psmall { font-size:13px; color:var(--p-2); font-weight:400; }
 .phead { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 12px; }
+.pfind { display:flex; align-items:center; gap:8px; height:32px; padding:0 12px; border:1px solid var(--gray-border); border-radius:8px; color:var(--p-3); }
+.pfind input { border:0; outline:0; background:transparent; color:inherit; font-size:13px; width:240px; max-width:50vw; } .pfind:focus-within { border-color:var(--blue-solid); }
 .pread { margin-left:auto; display:flex; align-items:center; gap:8px; font-size:12px; color:var(--p-3); font-variant-numeric:tabular-nums; }
 .pbtn { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer;
         background:var(--p-card); color:var(--p-fg); border:1px solid var(--gray-border); }
@@ -646,6 +648,7 @@ const api = REMOTE ? {
   sonnet() { return this.call({ action: "sonnet" }); },
   prints() { return this.call({ action: "prints" }); },
   printsRows(kind, why, offset) { return this.call({ action: "prints_rows", kind, why, offset }); },
+  printsFind(q) { return this.call({ action: "prints_find", q }); },
   printsMark(goods_id, human, why, by) { return this.call({ action: "prints_mark", goods_id, human, why, by }); },
   printsFinalMark(goods_id, human, why, by) { return this.call({ action: "prints_final_mark", goods_id, human, why, by }); },
   redraws() { return this.call({ action: "redraws" }); },
@@ -2017,8 +2020,9 @@ async function refreshCache() {
 // What the page answers: of the products to get a print file, how many can be used, and what the
 // owner has to look at. The counts are read once when the page is opened and when 刷新 is pressed; a
 // heading's pictures are read when it is opened, 96 at a time. Nothing here changes by the second.
-let printsData = null, printsCat = "overview", printsWhy = null, printsCache = {};
+let printsData = null, printsCat = "overview", printsWhy = null, printsCache = {}, printsQ = "";
 const PICON = {   // Lucide (ISC), the shapes this page uses
+  "search": '<path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/>',
   "circle-check": '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
   "circle-x": '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
   "circle-minus": '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>',
@@ -2193,13 +2197,15 @@ function printsList(g) {
   const why = g.whys && g.whys.find(w => w.why === printsWhy) || null, n = why ? why.n : g.n;
   const c = printsCache[g.key + ":" + (why ? why.why : "")] || { rows: [] }, left = Math.max(0, n - c.rows.length);
   const two = r => !!(r.thumb_url || g.key === "cut" || g.key === "pending");
+  // a looked-up product may be under any heading: its row says which card it is (the print file; waiting for an answer; answered)
+  const G = r => g.key !== "find" ? g : r.as_final ? { final: true } : !r.tried || !r.made ? {} : r.human ? { undo: true } : r.cut || r.thumb_url ? { confirm: true } : {};
   const RSTATE = { good: ["green", "circle-check", "和主图对得上"], look: ["amber", "triangle-alert", "请多看一眼"], bad: ["red", "circle-x", "和主图对不上"] };
   const how = r => r.redraw ? ppill(...(RSTATE[r.state] || RSTATE.look)) + `<span>对上 ${num(r.like_main)} 点</span>` : r.cut ? ppill("blue", (PWAY[r.why] || [0, "scissors"])[1], (PWAY[r.why] || [r.why])[0])
-    : g.key === "skipped" ? ppill("gray", "circle-minus", PRINT_SKIP[r.why] || r.why || "") : r.why ? ppill(r.thumb_url ? "amber" : "gray", r.thumb_url ? "sparkles" : "ban", printWhy(r.why)[1]) : "";
+    : g.key === "skipped" || r.made === false ? ppill("gray", "circle-minus", PRINT_SKIP[r.why] || r.why || "") : r.why ? ppill(r.thumb_url ? "amber" : "gray", r.thumb_url ? "sparkles" : "ban", printWhy(r.why)[1]) : "";
   const said = r => r.human === "ok" ? ppill("green", "circle-check", "能用") : r.human === "bad" ? ppill("red", "circle-x", "不能用：" + (r.human_why || "没说原因")) : "";
-  const act = r => g.confirm ? `<div class="pact"><button class="pbtn yes" data-mark="ok" data-goods="${esc(r.goods_id)}">${pic("circle-check")}能用</button>
+  const act = r => G(r).confirm ? `<div class="pact"><button class="pbtn yes" data-mark="ok" data-goods="${esc(r.goods_id)}">${pic("circle-check")}能用</button>
         <span class="psmall">不能用：</span>${PBAD.map(b => `<button class="pbtn no" data-mark="bad" data-goods="${esc(r.goods_id)}" data-why="${b}">${b}</button>`).join("")}</div>`
-    : g.undo ? `<div class="pact">${said(r)}<button class="pbtn" data-mark="" data-goods="${esc(r.goods_id)}">${pic("undo-2")}撤销</button></div>` : "";
+    : G(r).undo ? `<div class="pact">${said(r)}<button class="pbtn" data-mark="" data-goods="${esc(r.goods_id)}">${pic("undo-2")}撤销</button></div>` : "";
   const fin = r => { const k = r.checks || {};
     return `<div class="pact">${ppill(Number(k.final_times) > 3.5 ? "amber" : "green", Number(k.final_times) > 3.5 ? "triangle-alert" : "circle-check", `放大 ${Number(k.final_times).toFixed(1)} 倍`)}
       <span class="psmall">主图上 ${num(k.final_from)} 像素宽 → ${k.final_px ? num(k.final_px[0]) + " × " + num(k.final_px[1]) : ""} 像素</span>
@@ -2210,9 +2216,9 @@ function printsList(g) {
         <span class="psmall">不能用：</span>${FBAD.map(b => `<button class="pbtn no" data-fmark="bad" data-goods="${esc(r.goods_id)}" data-why="${b}">${b}</button>`).join("")}`}</div>`; };
   const card = r => `<div data-card="${esc(r.goods_id)}" class="pcard${two(r) ? " duo" : ""}">
       <div class="pics">${r.source ? `<figure><img src="${esc(r.source)}" loading="lazy" alt="主图"><figcaption>主图</figcaption></figure>` : `<div class="none">${pic("image", 20)}没有主图</div>`}
-        ${two(r) ? `<figure class="cut"><img src="${esc(r.thumb_url || "")}" loading="lazy" alt="${g.final ? "放大后的印刷稿" : "抠出的印花"}"><figcaption>${g.final ? "印刷稿" : r.redraw ? "UV1 重画的" : r.cut ? "抠出的印花" : "模型圈出的"}</figcaption></figure>` : ""}</div>
+        ${two(r) ? `<figure class="cut"><img src="${esc(r.thumb_url || "")}" loading="lazy" alt="${G(r).final ? "放大后的印刷稿" : "抠出的印花"}"><figcaption>${G(r).final ? "印刷稿" : r.redraw ? "UV1 重画的" : r.cut ? "抠出的印花" : "模型圈出的"}</figcaption></figure>` : ""}</div>
       <div class="t" title="${esc(r.title || "")}">${esc(r.title || "商品 " + r.goods_id)}</div>
-      <div class="s">${how(r)}${g.undo || g.confirm ? "" : said(r)}${r.sold != null ? `<span>卖出 ${esc(r.sold)}</span>` : ""}<span>${esc(r.goods_id)}</span></div>${g.final ? fin(r) : act(r)}</div>`;
+      <div class="s">${how(r)}${G(r).undo || G(r).confirm ? "" : said(r)}${r.sold != null ? `<span>卖出 ${esc(r.sold)}</span>` : ""}<span>${esc(r.goods_id)}</span></div>${G(r).final ? fin(r) : act(r)}</div>`;
   const chips = g.whys && g.whys.length ? `<div class="pchips"><button data-pcat="${g.key}" class="${why ? "" : "on"}">全部 <b>${num(g.n)}</b></button>
       ${g.whys.map(w => `<button data-pcat="${g.key}" data-pwhy="${esc(w.why)}" class="${why && why.why === w.why ? "on" : ""}">${esc(w.label)} <b>${num(w.n)}</b></button>`).join("")}</div>` : "";
   const state = c.err ? `<div class="pempty red">${pic("circle-x", 20)}没读到：${esc(c.err)}</div>` : c.loaded ? `<div class="pempty">${pic(g.confirm ? "circle-check" : "info", 20)}${g.confirm ? "这一组都看完了。" : "这一组没有商品。"}</div>`
@@ -2220,22 +2226,28 @@ function printsList(g) {
   return `<div class="plisthead"><span class="phicon ${g.tone}">${pic(g.icon, 20)}</span><h3>${esc(g.label)}${why ? " · " + esc(why.label) : ""}</h3><span class="pcount">${num(n)} 个</span>
       <span class="psmall">${esc(why && why.note || g.note || "")}</span></div>
     ${chips}
-    ${c.rows.length ? `<div class="pgrid${c.rows.some(two) ? " duo" : ""}${g.confirm || g.final ? " judge" : ""}">${c.rows.map(card).join("")}</div>` : state}
+    ${c.rows.length ? `<div class="pgrid${c.rows.some(two) ? " duo" : ""}${g.confirm || g.final || g.key === "find" ? " judge" : ""}">${c.rows.map(card).join("")}</div>` : g.key === "find" && c.loaded && !c.err ? `<div class="pempty">${pic("search", 20)}目录里没有这个商品。</div>` : state}
     ${c.loaded && left > 0 && !c.end && c.rows.length ? `<div class="pnext"><button class="pbtn" id="printsMore">${pic("chevron-right")}再看 96 个</button><span class="psmall">已显示 ${num(c.rows.length)} / ${num(n)}</span></div>` : ""}`;
 }
 function printsPaint() {
   const d = printsData;
   if (!d || view !== "prints") return;
-  const groups = printsGroups(d), g = groups.find(x => x.key === printsCat) || groups[0];
+  const groups = printsGroups(d);
+  // the looked-up product's heading, only while something was looked up
+  if (printsQ) groups.splice(1, 0, { key: "find", label: "查到的商品", nav: "查到的", icon: "search", tone: "blue", n: new Set(((printsCache["find:"] || {}).rows || []).map(r => r.goods_id)).size,
+    note: `查的是“${printsQ}”。一个商品有放大后的稿时是两张卡片：抠出的印花一张，印刷稿一张。` });
+  const g = groups.find(x => x.key === printsCat) || groups[0];
   $("#printsNav").innerHTML = groups.map(x => x.sep ? `<div class="psep">${esc(x.sep)}</div>`
     : `<button data-pcat="${x.key}" class="sub2${x.key === g.key ? " on" : ""}">${pic(x.icon)}<span class="lab">${esc(x.nav || x.label)}</span>${x.n == null ? "" : `<span class="n${x.confirm && x.n > 0 ? " todo" : ""}">${num(x.n)}</span>`}</button>`).join("");
   $("#printsNav").hidden = false;
   document.querySelector('#tabs [data-view="prints"]').classList.add("open");
   $("#main").innerHTML = `<div class="dash prints">
     <div class="phead"><h2>印刷稿</h2><span class="psmall">从 Temu 主图做出印刷稿：能抠的抠下来，抠不了的归重画</span>
+      <form class="pfind" id="printsFind">${pic("search")}<input type="search" value="${esc(printsQ)}" placeholder="商品编号，或标题里的词，回车" aria-label="按商品编号或标题查"></form>
       <span class="pread">读取于 ${new Date(d.read_at).toLocaleTimeString("zh-CN", { hour12: false })}<button class="pbtn" id="printsReload">${pic("refresh-cw")}刷新</button></span></div>
     ${g.key === "overview" ? printsOverview(d, groups) : printsList(g)}</div>`;
   $("#printsReload").onclick = refreshPrints;
+  $("#printsFind").onsubmit = e => { e.preventDefault(); printsFind(e.target.querySelector("input").value.trim()); };
   document.querySelectorAll("[data-pcat]").forEach(b => b.onclick = () => {
     const moved = printsCat !== b.dataset.pcat;
     printsCat = b.dataset.pcat; printsWhy = b.dataset.pwhy || null; printsPaint();
@@ -2243,6 +2255,12 @@ function printsPaint() {
   });
   const key = g.key + ":" + (g.whys && g.whys.some(w => w.why === printsWhy) ? printsWhy : "");
   if ($("#printsMore")) $("#printsMore").onclick = () => printsMore(g.key, key);
+  if (g.key === "find") {   // an answer given on a looked-up product: written, then the product is read again (it has two cards)
+    const by = () => $("#reviewer").value.trim() || null, again = p => p.then(() => printsFind(printsQ), err => toast(err.message));
+    document.querySelectorAll("#main [data-mark]").forEach(b => b.onclick = () => again(api.printsMark(b.dataset.goods, b.dataset.mark, b.dataset.why || null, by())));
+    document.querySelectorAll("#main [data-fmark]").forEach(b => b.onclick = () => again(api.printsFinalMark(b.dataset.goods, b.dataset.fmark, b.dataset.why || null, by())));
+    return;
+  }
   document.querySelectorAll("#main [data-mark]").forEach(b => b.onclick = () => printsMark(b.dataset.goods, b.dataset.mark, b.dataset.why || null, g.key, key));
   document.querySelectorAll("#main [data-fmark]").forEach(b => b.onclick = () => printsFinalMark(b.dataset.goods, b.dataset.fmark, b.dataset.why || null, key));
   if (g.key !== "overview" && !printsCache[key]) printsMore(g.key, key);
@@ -2262,7 +2280,19 @@ async function printsFinalMark(goods, human, why, key) {
   }
   printsPaint();
 }
+async function printsFind(q) {
+  // one call per search; an empty box takes the heading away again
+  printsQ = q;
+  if (!q) { delete printsCache["find:"]; if (printsCat === "find") printsCat = "overview"; return printsPaint(); }
+  const c = printsCache["find:"] = { rows: (printsCache["find:"] || {}).rows || [], busy: true };
+  printsCat = "find"; printsWhy = null;
+  printsPaint();
+  try { c.rows = (await api.printsFind(q)).rows || []; } catch (err) { c.err = err.message; }
+  c.loaded = c.end = true; c.busy = false;
+  if (printsCat === "find") printsPaint();
+}
 async function printsMore(kind, key) {
+  if (kind === "find") return;
   const c = printsCache[key] || (printsCache[key] = { rows: [] });
   if (c.busy) return;
   c.busy = true; c.err = null;
