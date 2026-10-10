@@ -119,6 +119,12 @@ details div { overflow-wrap:anywhere; margin-top:6px; }
 .pcard .t { padding:10px 12px 2px; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .pcard .s { display:flex; flex-wrap:wrap; gap:2px 10px; padding:0 12px 10px; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
 .pcard .s .tag { color:var(--amber); }
+.pgrid.big { grid-template-columns:repeat(auto-fill,minmax(440px,1fr)); }
+.pact { display:flex; flex-wrap:wrap; gap:6px; padding:2px 12px 12px; }
+.pact button { font-size:13px; padding:6px 11px; border-radius:8px; cursor:pointer; }
+.pact .yes { background:var(--green); color:#fff; border-color:var(--green); font-weight:600; padding:6px 18px; }
+.pact .no { color:var(--red); }
+.pfun { display:flex; height:30px; gap:3px; } .pfun i { border-radius:6px; min-width:4px; }
 .pmore { display:flex; align-items:center; gap:12px; justify-content:center; padding:8px 0 24px; } .pmore button { padding:8px 22px; border-radius:999px; cursor:pointer; }
 .moved { margin:0 0 8px; padding:8px 10px; border-radius:8px; background:var(--amber-bg); font-size:14px; }
 /* the record wall's filters */
@@ -559,6 +565,7 @@ const api = REMOTE ? {
   sonnet() { return this.call({ action: "sonnet" }); },
   prints() { return this.call({ action: "prints" }); },
   printsRows(kind, why, offset) { return this.call({ action: "prints_rows", kind, why, offset }); },
+  printsMark(goods_id, human, why, by) { return this.call({ action: "prints_mark", goods_id, human, why, by }); },
   sonnetRule(n) { return this.call({ action: "sonnet_rule", min_orders: n }); },
   machines(since) { return this.call({ action: "machines", since }); },
   machine(machine, since, hours) { return this.call({ action: "machine", machine, since, hours }); },
@@ -1953,9 +1960,17 @@ function printsGroups(d) {
   const skips = (d.skipped || []).map(w => ({ why: w.why, n: Number(w.n), label: PRINT_SKIP[w.why] || w.why, note: "" }));
   const WAY = { flat: ["白底抠图", "白底、平铺的主图：印花就是和衣服颜色不一样的那部分。"], template: ["同款底图相减", "场景图、模特图：从用同一张样机底图的几张图里算出空白衣服，主图减去它就是印花，褶皱、阴影、手臂都不会带进来。"],
     single: ["单张图估空白衣服", "没有同款底图的图：布面的变化是平缓的，印花从锐利的边开始。从确定是布的地方往外跟着布走，停下的地方就是印花；印花底下的布用周围的布补出来，再相减。"] };
-  const ways = (d.ways || []).map(w => ({ why: w.why, n: Number(w.n), label: (WAY[w.why] || [w.why])[0], note: (WAY[w.why] || ["", ""])[1] }));
+  const ways = (d.ways || []).map(w => ({ why: w.why, n: Number(w.n), ok: Number(w.ok || 0), bad: Number(w.bad || 0), label: (WAY[w.why] || [w.why])[0], note: (WAY[w.why] || ["", ""])[1] }));
+  const h = d.human || {};
   return [
     { key: "overview", label: "总览" },
+    // what a person has to say, and has said (side: not a part of the catalogue's bar - these lie across its parts)
+    { key: "pending", label: "待确认", n: Number(h.cut_pending || 0), side: true, confirm: true, whys: ways.map(w => ({ ...w, n: w.n - w.ok - w.bad })),
+      note: "程序抠成并通过了自检，但还没有人确认它和主图一致。左边主图，右边抠出的印花：一致点“能用”，不一致点原因。每点一下就记下来，这个商品从这里消失。" },
+    { key: "cand", label: "待确认·模型", n: Number(h.cand_pending || 0), side: true, confirm: true,
+      note: "前三种办法抠不了，模型找到了印花（右边）。抽样看大约四成是完整的，所以不算成功，要人看过才算数。" },
+    { key: "confirmed", label: "已确认能用", n: Number(h.cut_ok || 0) + Number(h.cand_ok || 0), side: true, undo: true, note: "人看过、确认和主图一致的。点“撤销”改回待确认。" },
+    { key: "rejected", label: "确认不能用", n: Number(h.cut_bad || 0) + Number(h.cand_bad || 0), side: true, undo: true, note: "人看过、不能用的，归重画。点“撤销”改回待确认。" },
     { key: "cut", label: "抠成功", n: cut, color: "var(--green)", whys: ways, note: "左边是主图，右边是抠出的印花。抠出的印花放大到印刷尺寸后就是印刷稿。" },
     { key: "failed", label: "抠不了", n: tried - cut, color: "var(--amber)", whys: fails, note: "程序自己说出了原因；这些主图转给 UV1 的改图模型重画。" },
     { key: "no_main", label: "没有主图", n: Number(d.no_main || 0), color: "#9a9aa2", note: "目录里要做稿，但采集时没有拿到主图，还没法试抠图。" },
@@ -1964,7 +1979,12 @@ function printsGroups(d) {
 }
 function printsOverview(d, groups) {
   const tried = Number(d.tried || 0), cut = Number(d.cut || 0), all = d.all_pictures || {}, total = Number(d.catalog || 0);
-  const parts = groups.filter(g => g.key !== "overview");
+  const parts = groups.filter(g => g.key !== "overview" && !g.side);
+  const h = d.human || {}, okN = Number(h.cut_ok || 0) + Number(h.cand_ok || 0), badN = Number(h.cut_bad || 0) + Number(h.cand_bad || 0);
+  const waitCut = Number(h.cut_pending || 0), waitCand = Number(h.cand_pending || 0), base = Number(d.products || 0);
+  const rest = Math.max(0, base - okN - badN - waitCut - waitCand);
+  const seg = (n, color, title) => n > 0 ? `<i title="${title} ${num(n)}" style="flex:${Math.max(n, base * 0.006)};background:${color}"></i>` : "";
+  const fig = (cat, n, label, color, sub) => `<button data-pcat="${cat}"><i style="background:${color}"></i><span>${label}</span><b>${num(n)}</b><em>${pct(n, base)}${sub ? " · " + sub : ""}</em></button>`;
   const NAME = { x2: "抠图 + 普通放大", real: "抠图 + 新放大", redraw: "UV1 重画" };
   const trial = t => `<tr class="${t.method === "real" ? "cur" : ""}" title="${esc(t.note || "")}"><td>${NAME[t.method] || esc(t.method)}${t.method === "real" ? ` <span class="pill idle">现在的做法</span>` : ""}</td>
     <td>${Number(t.sharp).toFixed(0)}%</td><td><b>${Number(t.fine).toFixed(0)}%</b></td><td><b>${Number(t.same).toFixed(3)}</b></td><td>约 ${Number(t.seconds)} 秒</td></tr>`;
@@ -1973,6 +1993,16 @@ function printsOverview(d, groups) {
       <span class="b"><i style="width:${(100 * w.n / top).toFixed(1)}%;background:${g.color}"></i></span><span class="c">${num(w.n)}</span><span class="p">${pct(w.n, of)}</span></button>`).join(""); };
   const failed = groups.find(g => g.key === "failed"), skipped = groups.find(g => g.key === "skipped");
   return `<div class="panel">
+      <div class="phead"><h3>要做稿的 ${num(base)} 个商品里，能用多少</h3><span class="muted">“能用”只算人看过、确认和主图一致的 · 点一项去看图</span></div>
+      <div class="pbig"><b>${pct(okN, base)}</b><span>已确认能用 ${num(okN)} 个 · 还没看 ${num(waitCut + waitCand)} 个${h.last ? " · 最近一次确认 " + new Date(h.last).toLocaleString("zh-CN", { hour12: false }) : ""}</span></div>
+      <div class="pfun">${seg(okN, "var(--green)", "已确认能用")}${seg(waitCut, "#9fd8b4", "抠成了，还没看")}${seg(waitCand, "#f0d48a", "模型找到，还没看")}${seg(badN, "var(--red)", "确认不能用")}${seg(rest, "#cfcfd6", "抠不了，归重画")}</div>
+      <div class="plegend">${fig("confirmed", okN, "已确认能用", "var(--green)")}${fig("pending", waitCut, "抠成了，还没看", "#9fd8b4", `程序通过自检 ${num(cut)} 个`)}${fig("cand", waitCand, "模型找到，还没看", "#f0d48a")}${fig("rejected", badN, "确认不能用", "var(--red)")}${fig("failed", rest, "抠不了，归重画", "#cfcfd6")}</div>
+      ${(d.ways || []).length ? `<table class="ptable" style="margin-top:10px"><tr><th>办法</th><th>程序抠成</th><th>确认能用</th><th>确认不能用</th><th>还没看</th><th>看过的里面能用</th></tr>
+        ${groups.find(g => g.key === "cut").whys.map(w => `<tr><td>${esc(w.label)}</td><td>${num(w.n)}</td><td>${num(w.ok)}</td><td>${num(w.bad)}</td><td>${num(w.n - w.ok - w.bad)}</td><td><b>${w.ok + w.bad ? pct(w.ok, w.ok + w.bad) : "–"}</b></td></tr>`).join("")}
+        <tr><td>模型找到（不算抠成）</td><td>${num(h.cand || 0)}</td><td>${num(h.cand_ok || 0)}</td><td>${num(h.cand_bad || 0)}</td><td>${num(waitCand)}</td><td><b>${Number(h.cand_ok || 0) + Number(h.cand_bad || 0) ? pct(h.cand_ok, Number(h.cand_ok) + Number(h.cand_bad)) : "–"}</b></td></tr></table>` : ""}
+      ${(d.bad_why || []).length ? `<div class="muted" style="margin-top:8px">不能用的原因：${d.bad_why.map(w => `${esc(w.why)} ${num(w.n)}`).join(" · ")}</div>` : ""}
+    </div>
+    <div class="panel">
       <div class="phead"><h3>目录里的 ${num(total)} 个商品</h3><span class="muted">点一段看这一组的图</span></div>
       <div class="pstack">${parts.map(g => `<button data-pcat="${g.key}" title="${esc(g.label)} ${num(g.n)}" style="flex:${Math.max(g.n, total * 0.02)};background:${g.color}"></button>`).join("")}</div>
       <div class="plegend">${parts.map(g => `<button data-pcat="${g.key}"><i style="background:${g.color}"></i><span>${esc(g.label)}</span><b>${num(g.n)}</b><em>${pct(g.n, total)}</em></button>`).join("")}</div>
@@ -2004,17 +2034,20 @@ function printsOverview(d, groups) {
 function printsList(g) {
   const why = g.whys && g.whys.find(w => w.why === printsWhy) || null, n = why ? why.n : g.n;
   const c = printsCache[g.key + ":" + (why ? why.why : "")] || { rows: [] }, left = Math.max(0, n - c.rows.length);
-  const tag = r => why ? "" : g.key === "cut" ? `<span class="tag" style="color:var(--green)">${esc((g.whys.find(w => w.why === r.why) || {}).label || "")}</span>` : g.key === "failed" ? `<span class="tag">${esc(printWhy(r.why)[1])}</span>` : g.key === "skipped" ? `<span class="tag">${esc(PRINT_SKIP[r.why] || r.why || "")}</span>` : "";
-  const card = r => `<div class="pcard${g.key === "cut" || r.thumb_url ? " duo" : ""}">
+  const BAD = ["缺了一块", "多带了东西", "颜色不对", "不是印花", "其它"];
+  const act = r => g.confirm ? `<div class="pact"><button class="yes" data-mark="ok" data-goods="${esc(r.goods_id)}">能用</button>${BAD.map(b => `<button class="no" data-mark="bad" data-goods="${esc(r.goods_id)}" data-why="${b}">${b}</button>`).join("")}</div>`
+    : g.undo ? `<div class="pact"><span class="muted" style="align-self:center">${r.human === "bad" ? "不能用：" + esc(r.human_why || "没说原因") : "能用"}</span><button data-mark="" data-goods="${esc(r.goods_id)}">撤销</button></div>` : "";
+  const tag = r => why ? "" : g.key === "cut" || g.key === "pending" || (g.undo && r.cut) ? `<span class="tag" style="color:var(--green)">${esc((g.whys.find(w => w.why === r.why) || {}).label || "")}</span>` : g.key === "failed" ? `<span class="tag">${esc(printWhy(r.why)[1])}</span>` : g.key === "skipped" ? `<span class="tag">${esc(PRINT_SKIP[r.why] || r.why || "")}</span>` : "";
+  const card = r => `<div data-card="${esc(r.goods_id)}" class="pcard${g.key === "cut" || r.thumb_url ? " duo" : ""}">
       <div class="pics">${r.source ? `<img src="${esc(r.source)}" loading="lazy" alt="">` : `<div class="none">没有主图</div>`}${g.key === "cut" || r.thumb_url ? `<img class="cut" src="${esc(r.thumb_url || "")}" loading="lazy" alt="">` : ""}</div>
       <div class="t" title="${esc(r.title || "")}">${esc(r.title || "商品 " + r.goods_id)}</div>
-      <div class="s">${tag(r)}${r.sold != null ? `<span>卖出 ${esc(r.sold)}</span>` : ""}${g.key === "cut" && r.px ? `<span>印花 ${r.px[0]}×${r.px[1]}</span>` : ""}<span title="商品号">${esc(r.goods_id)}</span></div></div>`;
+      <div class="s">${tag(r)}${r.sold != null ? `<span>卖出 ${esc(r.sold)}</span>` : ""}${g.key === "cut" && r.px ? `<span>印花 ${r.px[0]}×${r.px[1]}</span>` : ""}<span title="商品号">${esc(r.goods_id)}</span></div>${act(r)}</div>`;
   const chips = g.whys && g.whys.length ? `<div class="pchips"><button data-pcat="${g.key}" class="${why ? "" : "on"}">全部 <b>${num(g.n)}</b></button>
       ${g.whys.map(w => `<button data-pcat="${g.key}" data-pwhy="${esc(w.why)}" class="${why && why.why === w.why ? "on" : ""}">${esc(w.label)} <b>${num(w.n)}</b></button>`).join("")}</div>` : "";
   return `<div class="phead big"><h3>${esc(g.label)}${why ? " · " + esc(why.label) : ""}</h3><b>${num(n)}</b><span class="muted">个商品</span></div>
     <div class="muted" style="margin-top:-8px">${esc(why && why.note || g.note || "")}</div>
     ${chips}
-    <div class="pgrid${g.key === "cut" || c.rows.some(r => r.thumb_url) ? " duo" : ""}">${c.rows.map(card).join("") || `<span class="muted">${c.err ? esc(c.err) : c.loaded ? "这一组没有商品。" : "加载中…"}</span>`}</div>
+    <div class="pgrid${g.key === "cut" || c.rows.some(r => r.thumb_url) ? " duo" : ""}${g.confirm ? " big" : ""}">${c.rows.map(card).join("") || `<span class="muted">${c.err ? esc(c.err) : c.loaded ? "这一组没有商品。" : "加载中…"}</span>`}</div>
     ${c.loaded && left > 0 && !c.end ? `<div class="pmore"><button id="printsMore">再看 96 个</button><span class="muted">已显示 ${num(c.rows.length)} / ${num(n)}</span></div>` : ""}
     ${c.loaded && c.rows.length && (left <= 0 || c.end) ? `<div class="pmore"><span class="muted">${num(c.rows.length)} 个都在上面了。</span></div>` : ""}`;
 }
@@ -2036,6 +2069,7 @@ function printsPaint() {
   });
   const key = g.key + ":" + (g.whys && g.whys.some(w => w.why === printsWhy) ? printsWhy : "");
   if ($("#printsMore")) $("#printsMore").onclick = () => printsMore(g.key, key);
+  document.querySelectorAll("#main [data-mark]").forEach(b => b.onclick = () => printsMark(b.dataset.goods, b.dataset.mark, b.dataset.why || null, g.key, key));
   if (g.key !== "overview" && !printsCache[key]) printsMore(g.key, key);
 }
 async function printsMore(kind, key) {
@@ -2048,6 +2082,28 @@ async function printsMore(kind, key) {
   } catch (err) { c.err = err.message; }
   c.busy = false;
   if (printsCat === kind) printsPaint();
+}
+// One answer of the owner's on one print file: written at once (one call), the card goes, and the counts on the page
+// follow without reading everything again. A heading that waits for answers always shows the first of what is left,
+// so more is fetched from where the cards still shown end.
+async function printsMark(goods, human, why, kind, key) {
+  const el = document.querySelector(`[data-card="${goods}"]`);
+  if (el) el.style.opacity = 0.35;
+  try { await api.printsMark(goods, human, why, $("#reviewer").value.trim() || null); }
+  catch (err) { if (el) el.style.opacity = 1; toast(err.message); return; }
+  const c = printsCache[key], r = c && c.rows.find(x => x.goods_id === goods), h = printsData.human || (printsData.human = {});
+  if (c) c.rows = c.rows.filter(x => x.goods_id !== goods);
+  if (r) {
+    const pre = r.cut ? "cut_" : "cand_", name = v => v === "ok" ? "ok" : v === "bad" ? "bad" : "pending";
+    h[pre + name(r.human)] = Math.max(0, Number(h[pre + name(r.human)] || 0) - 1);
+    h[pre + name(human)] = Number(h[pre + name(human)] || 0) + 1;
+    h.last = new Date().toISOString();
+    const w = r.cut && (printsData.ways || []).find(x => x.why === r.why);
+    if (w) { if (r.human) w[r.human] = Math.max(0, Number(w[r.human] || 0) - 1); if (human) w[human] = Number(w[human] || 0) + 1; }
+  }
+  Object.keys(printsCache).forEach(k => { if (k !== key) delete printsCache[k]; });      // the other headings are read again when opened
+  if (printsCat === kind) printsPaint();
+  if (c && c.rows.length < 12 && !c.end) printsMore(kind, key);
 }
 async function refreshPrints() {
   if (view !== "prints") return;
