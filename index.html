@@ -2092,6 +2092,7 @@ const pic = (name, size = 16) => `<svg class="pic" width="${size}" height="${siz
 const PRINT_SKIP = { "a photograph, not a mockup": "实拍照片", "not a black shirt": "不是黑色 T 恤", "print all over": "满版印花",
   "not a men's T-shirt": "不是男款 T 恤", "no print": "没有印花", "not a short-sleeved T-shirt": "不是短袖 T 恤" };
 const PRINT_WHY = [   // what a way said (its first words), a short name, and what it means
+  ["衣服上没有印花", "衣服上没有印花", "小模型看了主图，判断衣服本身是空白的（广告图、纯色款、拼色款）。不做稿，也不送去重画。"],
   ["没有白底", "没有白底", "主图是场景图：衣服挂在房间里、模特穿着、铺在地板上。"],
   ["抠出的范围几乎是整件衣服", "范围像整件衣服", "程序把大半件衣服都当成了印花，多数是水洗做旧的面料。"],
   ["衣服不是纯色", "衣服不是纯色", "衣服本身有几种颜色，或者印花占满了整件，分不出哪里是布。"],
@@ -2136,7 +2137,7 @@ function printsGroups(d) {
     { key: "redraw_bad", label: "重画 · 确认不能用", nav: "重画不能用", icon: "circle-x", tone: "red", n: Number(rd.bad || 0), undo: true, redraw: true, note: "重画的里面，人看过、不能用的。" },
     { sep: "程序的结果" },
     { key: "cut", label: "程序抠成", icon: "scissors", tone: "blue", n: cut, whys: ways, note: "通过了程序自检的全部，不管人看没看过。" },
-    { key: "failed", label: "抠不了", icon: "ban", tone: "gray", n: tried - cut, whys: fails, note: "每种办法都说出了原因；归重画。" },
+    { key: "failed", label: "抠不了", icon: "ban", tone: "gray", n: tried - cut, whys: fails, note: "每种办法都说出了原因；归重画。衣服上没有印花的除外：不做稿，也不重画。" },
     { key: "no_main", label: "没有主图", icon: "image", tone: "gray", n: Number(d.no_main || 0), note: "要做稿，但采集时没有拿到主图。" },
     { key: "skipped", label: "不做稿", icon: "circle-minus", tone: "gray", n: skips.reduce((a, w) => a + w.n, 0), whys: skips, note: "采集那一步标了不做印刷稿，不算在上面任何一个数里。" },
   ];
