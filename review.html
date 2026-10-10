@@ -2156,12 +2156,13 @@ function printsGroups(d) {
 }
 // The five steps as one bar: how many products are at each, as a share of the step before; a step opens its heading.
 function printsSteps(d, on) {
-  const h = d.human || {}, rd = d.redraw || {}, fs = d.final_said || {}, dc = d.decide || {};
+  const h = d.human || {}, rd = d.redraw || {}, fs = d.final_said || {}, dc = d.decide || {}, co = dc.collected || {};
   const cut = Number(d.cut || 0), drawn = Number(rd.made || 0), have = cut + drawn;
   const okN = Number(h.cut_ok || 0) + Number(h.cand_ok || 0) + Number(rd.ok || 0), fin = Number(fs.n || d.final || 0);
   const steps = [
-    ["overview", "image", "采到的商品", Number(d.catalog || 0), null, "Temu 上采来的主图"],
-    ["decide", "shirt", "1 · 该做稿的", Number(d.products || 0), Number(d.catalog || 0), dc.make != null ? `LogoGuard 判 ${num(dc.make)} 个，未生效` : "按插件的判断"],
+    // every product once, wherever it was collected: read off Temu's lists, in Miaoshou's box, or both (lg_collected)
+    ["overview", "image", "采到的商品", Number(co.products || d.catalog || 0), null, co.products ? `列表 ${num(co.list + co.both)} · 妙手采集箱 ${num(co.box + co.both)} · 两边都有 ${num(co.both)}` : "Temu 上采来的主图"],
+    ["decide", "shirt", "1 · 该做稿的", Number(d.products || 0), Number(co.products || d.catalog || 0), dc.make != null ? `LogoGuard 判 ${num(dc.make)} 个，未生效` : "按插件的判断"],
     ["cut", "scissors", "2–3 · 有了印花", have, Number(d.products || 0), `抠成 ${num(cut)} · 重画 ${num(drawn)}`],
     ["confirmed", "circle-check", "你确认能用", okN, have, `还没看的 ${num(Number(h.cut_pending || 0) + Number(h.cand_pending || 0) + Number(rd.pending || 0))} 个`],
     ["final", "printer", "4 · 放大成印刷稿", fin, have, `确认能打的 ${num(fs.ok || 0)} 张`],   // of what has a print: files are made of cuts not answered yet too
@@ -2212,7 +2213,7 @@ function printsGroupsRaw(d) {
 // The plugin only collects; whether a product is made is decided here (the owner, 2026-10-10). Until the switch
 // is made nothing acts on this: the table shows where the two differ, a cell opens its products.
 const DWHY = { make: "该做", "no print": "没有印花", "print all over": "满版印花", "not black or white": "不是黑色或白色",
-  "not a black shirt": "不是黑色 T 恤", "not a men's T-shirt": "不是男款 T 恤", "not a short-sleeved T-shirt": "不是短袖 T 恤", "a photograph, not a mockup": "实拍照片" };
+  "not a black shirt": "不是黑色 T 恤", "not a men's T-shirt": "不是男款 T 恤", "not a short-sleeved T-shirt": "不是短袖 T 恤", "a photograph, not a mockup": "实拍照片", "not judged": "插件没判过（只在妙手采集箱）" };
 const dname = w => DWHY[w] || w;
 let decideCell = null, decideRows = {};
 function decideView(d) {
